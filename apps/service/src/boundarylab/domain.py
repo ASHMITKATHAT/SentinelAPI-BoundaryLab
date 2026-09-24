@@ -61,10 +61,15 @@ class ScanReport:
     evidence: list[Evidence] = field(default_factory=list)
     request_count: int = 0
     cleanup_status: str = "not_started"
+    execution_error: str | None = None
 
     @property
     def has_incomplete_cases(self) -> bool:
-        return any(case.required and case.verdict in {Verdict.INCONCLUSIVE, Verdict.SKIPPED} for case in self.cases)
+        return (
+            self.execution_error is not None
+            or self.cleanup_status == "failed"
+            or any(case.required and case.verdict in {Verdict.INCONCLUSIVE, Verdict.SKIPPED} for case in self.cases)
+        )
 
     @property
     def assessment(self) -> RunAssessment:
@@ -77,4 +82,3 @@ class ScanReport:
     @property
     def counts(self) -> dict[str, int]:
         return {verdict.value: sum(case.verdict == verdict for case in self.cases) for verdict in Verdict}
-

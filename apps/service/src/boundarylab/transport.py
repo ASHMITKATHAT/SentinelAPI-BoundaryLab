@@ -122,21 +122,26 @@ class ScopedTransport:
             started = time.monotonic()
             try:
                 async with asyncio.timeout(self.limits.request_deadline_seconds):
-                    response = await self.client.request(
+                    async with self.client.stream(
                         operation.method,
                         self.base_url + rendered_path,
                         headers=headers,
                         json=json_body,
                         follow_redirects=False,
-                    )
-                    raw = await response.aread()
+                    ) as response:
+                        chunks: list[bytes] = []
+                        size = 0
+                        async for chunk in response.aiter_bytes():
+                            size += len(chunk)
+                            if size > self.limits.response_body_bytes:
+                                raise BudgetExceeded("decoded response body limit exceeded")
+                            chunks.append(chunk)
+                        raw = b"".join(chunks)
             except TimeoutError:
                 raise
             duration_ms = int((time.monotonic() - started) * 1000)
             if 300 <= response.status_code < 400:
                 raise ScopeViolation("redirect response rejected")
-            if len(raw) > self.limits.response_body_bytes:
-                raise BudgetExceeded("decoded response body limit exceeded")
             try:
                 body = json.loads(raw) if raw else None
             except json.JSONDecodeError:

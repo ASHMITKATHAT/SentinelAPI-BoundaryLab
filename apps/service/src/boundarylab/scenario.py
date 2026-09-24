@@ -32,6 +32,7 @@ class InvoiceScenario:
         try:
             await self._execute()
         except Exception as exc:
+            self.report.execution_error = f"{type(exc).__name__}: {exc}"
             existing = {case.case_id for case in self.report.cases}
             for number in range(1, 13):
                 case_id = f"C{number:02}"

@@ -85,7 +85,7 @@ def create_fixture_app(variant: Variant | str, *, export_delay_ms: int = 10) -> 
     app = FastAPI(title="BoundaryLab synthetic invoice fixture", version="1.0.0")
     app.state.store = store
 
-    def identity(authorization: str | None = Header(default=None)) -> tuple[str, str]:
+    async def identity(authorization: str | None = Header(default=None)) -> tuple[str, str]:
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail={"code": "AUTH_REQUIRED"})
         value = TOKENS.get(authorization.removeprefix("Bearer "))
@@ -93,7 +93,7 @@ def create_fixture_app(variant: Variant | str, *, export_delay_ms: int = 10) -> 
             raise HTTPException(status_code=401, detail={"code": "INVALID_TOKEN"})
         return value
 
-    def lab_identity(authorization: str | None = Header(default=None)) -> None:
+    async def lab_identity(authorization: str | None = Header(default=None)) -> None:
         if authorization != f"Bearer {LAB_TOKEN}":
             raise HTTPException(status_code=403, detail={"code": "LAB_SCOPE_REQUIRED"})
 
@@ -121,6 +121,15 @@ def create_fixture_app(variant: Variant | str, *, export_delay_ms: int = 10) -> 
         if selected != Variant.VULNERABLE and invoice.owner_id != caller[0]:
             raise HTTPException(status_code=404, detail={"code": "NOT_FOUND"})
         return {"id": invoice.id, "content_marker": invoice.content_marker}
+
+    @app.get("/v1/invoices", operation_id="listInvoices")
+    async def list_invoices(caller=Depends(identity)):
+        result = []
+        for invoice in store.invoices.values():
+            if can_read(invoice, caller[0]):
+                result.append({"id": invoice.id, "owner_id": invoice.owner_id, "tenant_id": invoice.tenant_id,
+                               "content_marker": invoice.content_marker})
+        return result
 
     @app.get("/v1/invoices/{invoice_id}", operation_id="getInvoice")
     async def get_invoice(invoice_id: str, caller=Depends(identity)):

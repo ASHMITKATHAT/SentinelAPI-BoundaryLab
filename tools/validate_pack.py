@@ -74,7 +74,11 @@ for variant in ["vulnerable", "owner-only", "fixed"]:
             errors.append(f"evaluation: {variant} {verdict} count {actual[verdict]} != {expected.get(verdict)}")
 
 link_pattern = re.compile(r"\[[^\]]*\]\((?!https?://|mailto:|#)([^)]+)\)")
-for markdown in ROOT.rglob("*.md"):
+markdown_files = [
+    path for path in ROOT.rglob("*.md")
+    if not ({".git", ".venv", "node_modules"} & set(path.relative_to(ROOT).parts))
+]
+for markdown in markdown_files:
     text = markdown.read_text(encoding="utf-8")
     for raw in link_pattern.findall(text):
         target = raw.strip().strip("<>").split("#", 1)[0]
@@ -96,4 +100,4 @@ print("PACK VALIDATION PASSED")
 print("JSON artifacts: 7")
 print("OpenAPI documents: 2")
 print("Evaluation cases: 30 (12 core + 18 failure)")
-print(f"Markdown files: {sum(1 for _ in ROOT.rglob('*.md'))}")
+print(f"Markdown files: {len(markdown_files)}")

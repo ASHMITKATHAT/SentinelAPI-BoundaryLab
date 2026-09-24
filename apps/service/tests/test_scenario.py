@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import dataclasses
+import json
+
 import httpx
 import pytest
 
@@ -7,6 +10,8 @@ from boundarylab.domain import RunAssessment, Verdict
 from boundarylab.fixture import Variant, create_fixture_app
 from boundarylab.scenario import InvoiceScenario, ScenarioPolicy
 from boundarylab.transport import ScopedTransport, TransportLimits
+
+pytestmark = pytest.mark.asyncio
 
 
 EXPECTED = {
@@ -34,8 +39,14 @@ async def test_canonical_scenario_distinguishes_vulnerability_regression_and_fix
     assert report.counts[Verdict.INCONCLUSIVE] == expected["inconclusive"]
     assert report.assessment == expected["assessment"]
     assert report.cleanup_status == "complete"
+    assert report.execution_error is None
     assert report.build_id == f"invoice-{variant.value}"
     assert all(item.request_headers.get("Authorization") == "<REDACTED>" for item in report.evidence if "Authorization" in item.request_headers)
+    serialized_evidence = json.dumps([dataclasses.asdict(item) for item in report.evidence])
+    assert "token-alice" not in serialized_evidence
+    assert "token-bob" not in serialized_evidence
+    assert "token-mallory" not in serialized_evidence
+    assert "lab-factory-token" not in serialized_evidence
 
 
 async def test_owner_only_failure_does_not_become_revocation_pass():
@@ -50,4 +61,3 @@ async def test_owner_only_failure_does_not_become_revocation_pass():
     assert by_id["C08"].verdict == Verdict.VIOLATION
     assert by_id["C09"].verdict == Verdict.INCONCLUSIVE
     assert by_id["C10"].verdict == Verdict.INCONCLUSIVE
-
