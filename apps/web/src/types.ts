@@ -71,7 +71,7 @@ export interface Run {
 export interface ComparisonRow {
   case_id: string
   name: string
-  outcomes: Array<{ run_id: string; target_alias: string; build_id: string; verdict: Verdict; kind: string | null }>
+  outcomes: Array<{ run_id: string; target_alias: string; build_id: string | null; verdict: Verdict; kind: string | null }>
 }
 
 export interface Comparison {
@@ -79,4 +79,69 @@ export interface Comparison {
   policy_version: string
   runs: Run[]
   rows: ComparisonRow[]
+}
+
+export interface SpecSummary {
+  title: string
+  version: string
+  openapi: string
+  operation_count: number
+  operations: string[]
+  document: Record<string, unknown>
+}
+
+export interface Capabilities {
+  discovery: { openapi: boolean; har: boolean; active_replay: string }
+  remediation: { deterministic: boolean; ai_configured: boolean; model: string | null; data_sent: string }
+}
+
+export interface DiscoveryAnalysis {
+  id: string
+  label: string
+  created_at: string
+  analysis_version: string
+  spec: { title: string; version: string; openapi: string; sha256: string }
+  summary: {
+    documented_paths: number
+    documented_operations: number
+    ownership_candidates: number
+    authenticated_operations: number
+    shadow_operations: number
+    har_entries: number
+  }
+  invariant_candidates: Array<{
+    id: string
+    kind: string
+    operation_id: string
+    method: string
+    path: string
+    resource_parameter: string
+    confidence: string
+    proposed_rule: string
+    required_setup: string
+    review_required: boolean
+  }>
+  traffic_diff: {
+    provided: boolean
+    documented_operations_observed: number
+    shadow_operations: Array<{ method: string; path: string; sample_count: number; risk: string }>
+    unobserved_documented_operations: Array<{ method: string; path: string }>
+  }
+  safety: Record<string, boolean>
+  limitations: string[]
+}
+
+export interface Explanation {
+  id: string
+  run_id: string
+  mode: 'deterministic' | 'openai_structured'
+  model: string | null
+  provider_status: string
+  summary: string
+  risk: 'critical' | 'high' | 'medium' | 'low' | 'none'
+  root_causes: Array<{ case_id: string; category: string; explanation: string; recommended_guard: string }>
+  remediation_steps: string[]
+  regression_checks: string[]
+  patch_outline: string
+  limitations: string[]
 }

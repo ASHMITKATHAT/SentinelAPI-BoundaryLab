@@ -18,7 +18,19 @@ The product currently covers one reviewed permission lifecycle: Alice owns an in
 
 The live comparison shows why a deny-everyone repair is not acceptable. It prevents Bob's valid shared-detail and export flows, which produces two functional policy violations and makes three dependent cases inconclusive. The correct repair preserves those allowed paths and denies retrieval after revocation.
 
-Automated verification covers scenario verdicts, transport bounds and redaction, hashed sessions, restart recovery, queue cancellation, CSRF/Origin enforcement, trusted target selection and safe report rendering. The frontend passes TypeScript checking and a production Vite build. `tools/validate_pack.py` validates contracts, schemas, required cases, expected fixture counts and local documentation links.
+Automated verification covers scenario verdicts, transport bounds and redaction, hashed sessions, restart recovery, queue cancellation, CSRF/Origin enforcement, trusted target selection, discovery bounds, HAR minimization, remediation schema validation, CI failure semantics and safe report rendering. The frontend passes TypeScript checking and a production Vite build. `tools/validate_pack.py` validates contracts, schemas, required cases, expected fixture counts and local documentation links.
+
+## Generic onboarding without unsafe execution
+
+The Discovery workspace accepts OpenAPI 3.x JSON and optional HAR JSON. It derives operation coverage, flags resource-ID operations as human-reviewed dual-identity candidates and compares observed method/path templates with the contract. It sends no target requests. It does not persist HAR headers, cookies, query strings or bodies, and it generalizes identifier-like path segments.
+
+This makes the product useful on an unfamiliar API before an active adapter exists. Active execution still requires a trusted adapter defining actors, seed/setup, resource extraction, allowed operations, protected markers and cleanup. Arbitrary remote scanning is intentionally unavailable until isolated runners and DNS/IP pinning exist.
+
+## Remediation and CI
+
+Completed runs provide deterministic root-cause guidance. Optional model-assisted remediation uses schema-constrained output and only failed-case summaries after an explicit operator action. Model output is advisory and cannot alter deterministic results.
+
+`boundarylab.cli gate` runs the same lifecycle against a loopback target and returns a non-zero exit code for configured violations, inconclusive cases or execution errors. The repository workflow builds the client, runs all tests, validates artifacts and gates the live fixed fixture.
 
 ## Runtime and evidence controls
 
@@ -45,10 +57,11 @@ Until those gates are complete, describe BoundaryLab as a working local pilot or
 
 ## Mentor demonstration path
 
-1. Open the policy screen and point to the 2,000 ms revocation promise.
-2. Queue the three-build proof from the live-runs screen.
-3. Open vulnerable evidence for C02, C03, C06 and C10.
-4. Compare all three runs to show the leak, the broken owner-only repair and the correct repair.
-5. Export the fixed HTML report and explain its tested-scope boundary.
+1. Open Discovery, load the disclosed traffic sample and show the shadow route plus generated dual-identity candidates.
+2. Open Policy and point to the 2,000 ms revocation promise.
+3. Queue the three-build proof from Live runs.
+4. Open vulnerable evidence and generate deterministic remediation.
+5. Compare all three runs to show the leak, broken owner-only repair and correct repair.
+6. Export the fixed HTML report and explain its tested-scope boundary.
 
 The entire path uses persisted live-run data. The older file at `design/boundarylab-prototype.html` remains only a labelled design reference.

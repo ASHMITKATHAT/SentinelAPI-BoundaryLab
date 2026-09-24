@@ -41,6 +41,9 @@ The owner-only build matters: it closes access too aggressively and breaks legit
 - A durable SQLite WAL queue, restart recovery, cancellation, run events, reports and artifact hashes.
 - Evidence redaction and response-field allowlisting before persistence.
 - A responsive React interface using navy blue, red shades, grey and white, with accessible labels and reduced-motion handling.
+- Passive OpenAPI 3.x and HAR analysis that finds resource-ID operations, proposes dual-identity policy candidates and reports traffic routes missing from the contract.
+- Persisted deterministic remediation with an optional, explicitly invoked Structured Outputs model path. AI never controls execution or changes a verdict.
+- A loopback-only CI gate with configurable failure conditions and a GitHub Actions workflow that runs the fixed build through real sockets.
 
 See [implementation status](docs/32_IMPLEMENTATION_STATUS.md) for verified behavior and the remaining hosted-production gates.
 
@@ -84,6 +87,16 @@ Set-Location ../..
 ```
 
 The application imports the bundled contract, runs real HTTP requests against seeded targets, persists redacted evidence, compares actual runs and exports reports. Changing a target response changes the verdict. The working UI never substitutes the prototype's example evidence.
+
+The CLI gate is intentionally limited to loopback targets. A reviewed deployment adapter is required before remote active testing:
+
+```powershell
+& '.\.venv\Scripts\python.exe' -m boundarylab.cli gate `
+  --target http://127.0.0.1:9013 `
+  --fail-on violation,inconclusive,execution_error
+```
+
+Optional AI remediation uses the Responses API only when `OPENAI_API_KEY` is present. Set `BOUNDARYLAB_AI_MODEL` to choose an approved model. Failed-case summaries are sent only after the operator clicks the AI action; deterministic triage remains available offline.
 
 ## Production boundary
 

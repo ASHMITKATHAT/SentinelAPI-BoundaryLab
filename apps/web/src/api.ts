@@ -1,4 +1,4 @@
-import type { Comparison, Run, Target } from './types'
+import type { Capabilities, Comparison, DiscoveryAnalysis, Explanation, Run, SpecSummary, Target } from './types'
 
 let csrfToken = sessionStorage.getItem('boundarylab-csrf') || ''
 
@@ -34,13 +34,22 @@ export const api = {
     sessionStorage.removeItem('boundarylab-csrf')
   },
   targets: () => request<Target[]>('/api/v1/targets'),
+  capabilities: () => request<Capabilities>('/api/v1/capabilities'),
   policy: () => request<{ approved: boolean; sha256: string; document: Record<string, unknown> }>('/api/v1/policy'),
-  spec: () => request<{ title: string; version: string; openapi: string; operation_count: number; operations: string[] }>('/api/v1/spec'),
+  spec: () => request<SpecSummary>('/api/v1/spec'),
+  analyze: (label: string, document: Record<string, unknown>, har: Record<string, unknown> | null) =>
+    request<DiscoveryAnalysis>('/api/v1/discovery/analyses', {
+      method: 'POST', body: JSON.stringify({ label, document, har }),
+    }),
+  analyses: () => request<DiscoveryAnalysis[]>('/api/v1/discovery/analyses?limit=20'),
   runs: () => request<Run[]>('/api/v1/runs?limit=50'),
   run: (id: string) => request<Run>(`/api/v1/runs/${id}`),
   startRun: (targetAlias: string) => request<Run>('/api/v1/runs', { method: 'POST', body: JSON.stringify({ target_alias: targetAlias }) }),
   cancelRun: (id: string) => request<Run>(`/api/v1/runs/${id}/cancel`, { method: 'POST' }),
   compare: (runIds: string[]) => request<Comparison>('/api/v1/comparisons', { method: 'POST', body: JSON.stringify({ run_ids: runIds }) }),
+  explain: (runId: string, mode: 'deterministic' | 'ai') => request<Explanation>(`/api/v1/runs/${runId}/explanations`, {
+    method: 'POST', body: JSON.stringify({ mode }),
+  }),
   async artifact(runId: string, format: 'report_html' | 'results_json') {
     return request<{ download_path: string; sha256: string }>(`/api/v1/runs/${runId}/artifacts`, {
       method: 'POST', body: JSON.stringify({ format }),

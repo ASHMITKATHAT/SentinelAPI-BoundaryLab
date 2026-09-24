@@ -1,8 +1,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from './api'
-import type { CaseResult, Comparison, Evidence, Report, Run, Target, Verdict } from './types'
+import type { Capabilities, CaseResult, Comparison, DiscoveryAnalysis, Evidence, Explanation, Report, Run, SpecSummary, Target, Verdict } from './types'
 
-type View = 'runs' | 'policy' | 'compare' | 'reports'
+type View = 'runs' | 'discovery' | 'policy' | 'compare' | 'reports'
 
 const verdictLabel: Record<Verdict, string> = {
   pass: 'Pass', violation: 'Violation', inconclusive: 'Inconclusive', skipped: 'Skipped',
@@ -45,7 +45,8 @@ function Login({ onLogin }: { onLogin: () => void }) {
 
 function SideNav({ view, setView, logout }: { view: View; setView: (view: View) => void; logout: () => void }) {
   const items: Array<[View, string, string]> = [
-    ['runs', '01', 'Live runs'], ['policy', '02', 'Policy'], ['compare', '03', 'Compare repairs'], ['reports', '04', 'Report handoff'],
+    ['runs', '01', 'Live runs'], ['discovery', '02', 'Discovery'], ['policy', '03', 'Policy'],
+    ['compare', '04', 'Compare repairs'], ['reports', '05', 'Report handoff'],
   ]
   return <aside className="sidebar">
     <div><div className="brand"><div className="mark">B</div><div><strong>BoundaryLab</strong><small>SentinelAPI</small></div></div>
@@ -95,7 +96,27 @@ function EvidenceDrawer({ evidence, close }: { evidence: Evidence; close: () => 
   </div>
 }
 
-function RunDetail({ run, cancel }: { run: Run | null; cancel: (id: string) => void }) {
+function RemediationPanel({ run, capabilities }: { run: Run; capabilities: Capabilities | null }) {
+  const [result, setResult] = useState<Explanation | null>(null)
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  async function explain(mode: 'deterministic' | 'ai') {
+    setBusy(mode); setError('')
+    try { setResult(await api.explain(run.id, mode)) }
+    catch (caught) { setError(caught instanceof Error ? caught.message : 'Remediation analysis failed') }
+    finally { setBusy('') }
+  }
+  return <section className="card remediation">
+    <div className="section-head"><div><p className="eyebrow">Root cause + repair</p><h3>Remediation workspace</h3></div>{result && <span className="scope-chip">{result.mode === 'openai_structured' ? `AI · ${result.model}` : 'Deterministic'}</span>}</div>
+    <p className="muted">Generate a reviewable guard outline from failed policy cases. Deterministic mode never sends data outside this process.</p>
+    <div className="remediation-actions"><button className="button secondary" disabled={!!busy} onClick={() => explain('deterministic')}>{busy === 'deterministic' ? 'Analyzing…' : 'Deterministic triage'}</button><button className="button primary" disabled={!!busy || !capabilities?.remediation.ai_configured} onClick={() => explain('ai')}>{busy === 'ai' ? 'Calling model…' : capabilities?.remediation.ai_configured ? `AI review · ${capabilities.remediation.model}` : 'AI provider not configured'}</button></div>
+    {capabilities?.remediation.ai_configured && <p className="micro muted">AI mode sends only failed-case summaries after this explicit click. Raw headers, tokens and response bodies stay local.</p>}
+    {error && <p className="form-error" role="alert">{error}</p>}
+    {result && <div className="remediation-result"><div className={`risk risk-${result.risk}`}>{result.risk} risk</div><h4>{result.summary}</h4>{result.root_causes.length > 0 && <div className="root-causes">{result.root_causes.map(cause => <article key={`${cause.case_id}-${cause.category}`}><code>{cause.case_id}</code><strong>{cause.category.replaceAll('_',' ')}</strong><p>{cause.explanation}</p><p className="guard">{cause.recommended_guard}</p></article>)}</div>}<div className="repair-grid"><div><h4>Repair steps</h4><ol>{result.remediation_steps.map(item => <li key={item}>{item}</li>)}</ol></div><div><h4>Regression checks</h4><ul>{result.regression_checks.map(item => <li key={item}>{item}</li>)}</ul></div></div><h4>Patch outline</h4><pre>{result.patch_outline}</pre><p className="micro muted">{result.limitations.join(' ')}</p></div>}
+  </section>
+}
+
+function RunDetail({ run, cancel, capabilities }: { run: Run | null; cancel: (id: string) => void; capabilities: Capabilities | null }) {
   const [evidence, setEvidence] = useState<Evidence | null>(null)
   if (!run) return <section className="empty-state"><div className="empty-icon">↗</div><h2>Select or start a run</h2><p>Actual evidence and policy outcomes will appear here.</p></section>
   const report = run.report
@@ -117,12 +138,13 @@ function RunDetail({ run, cancel }: { run: Run | null; cancel: (id: string) => v
             <td><code>{item.case_id}</code></td><td><strong>{item.name}</strong>{item.reason_code && <small>{item.reason_code}</small>}</td><td>{item.expected}</td><td>{item.observed}</td><td><StatusBadge value={item.verdict}/></td>
           </tr>)}</tbody></table></div>
       </section>
+      <RemediationPanel run={run} capabilities={capabilities}/>
     </>}
     {evidence && <EvidenceDrawer evidence={evidence} close={() => setEvidence(null)}/>}
   </>
 }
 
-function RunsView({ targets, runs, selectedRun, select, refresh }: { targets: Target[]; runs: Run[]; selectedRun: Run | null; select: (run: Run) => void; refresh: () => Promise<void> }) {
+function RunsView({ targets, runs, selectedRun, select, refresh, capabilities }: { targets: Target[]; runs: Run[]; selectedRun: Run | null; select: (run: Run) => void; refresh: () => Promise<void>; capabilities: Capabilities | null }) {
   const [target, setTarget] = useState('demo-vulnerable')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -131,11 +153,47 @@ function RunsView({ targets, runs, selectedRun, select, refresh }: { targets: Ta
   async function cancel(id: string) { try { await api.cancelRun(id); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Cancellation failed') } }
   return <><header className="page-head"><div><p className="eyebrow">Live authorization workbench</p><h1>Test the promise, not the endpoint.</h1><p>Run a declared sharing policy through real local HTTP targets and inspect the evidence.</p></div><div className="demo-flag"><i/>Synthetic fixture targets</div></header>
     <section className="launch card"><div className="launch-copy"><span className="step-number">01</span><div><h2>Choose a disclosed implementation</h2><p>Target URLs come from the trusted server registry. This form cannot scan an arbitrary host.</p></div></div><div className="launch-actions"><label htmlFor="target">Target build</label><select id="target" value={target} onChange={e => setTarget(e.target.value)}>{targets.map(item => <option value={item.alias} key={item.alias}>{item.label}</option>)}</select><button className="button primary" onClick={() => start()} disabled={busy}>{busy ? 'Queueing…' : 'Run selected target'}</button><button className="button secondary" onClick={matrix} disabled={busy}>Queue three-build proof</button></div>{error && <p className="form-error full" role="alert">{error}</p>}</section>
-    <div className="workspace-grid"><section className="card recent"><div className="section-head"><div><p className="eyebrow">Persisted locally</p><h3>Recent runs</h3></div><button className="icon-button" onClick={refresh} aria-label="Refresh runs">↻</button></div><RunList runs={runs} selected={selectedRun?.id} select={select}/></section><div className="detail-column"><RunDetail run={selectedRun} cancel={cancel}/></div></div>
+    <div className="workspace-grid"><section className="card recent"><div className="section-head"><div><p className="eyebrow">Persisted locally</p><h3>Recent runs</h3></div><button className="icon-button" onClick={refresh} aria-label="Refresh runs">↻</button></div><RunList runs={runs} selected={selectedRun?.id} select={select}/></section><div className="detail-column"><RunDetail run={selectedRun} cancel={cancel} capabilities={capabilities}/></div></div>
   </>
 }
 
-function PolicyView({ policy, spec }: { policy: { approved: boolean; sha256: string; document: Record<string, any> } | null; spec: { title: string; openapi: string; operation_count: number; operations: string[] } | null }) {
+function DiscoveryView({ spec }: { spec: SpecSummary | null }) {
+  const [label, setLabel] = useState('Mentor API review')
+  const [specText, setSpecText] = useState('')
+  const [harText, setHarText] = useState('')
+  const [result, setResult] = useState<DiscoveryAnalysis | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => { if (spec?.document && !specText) setSpecText(JSON.stringify(spec.document, null, 2)) }, [spec?.document])
+  function loadFile(file: File | undefined, target: 'spec' | 'har') {
+    if (!file) return
+    if (file.size > 2_000_000) { setError('File exceeds the 2 MB analysis limit.'); return }
+    file.text().then(text => { setError(''); target === 'spec' ? setSpecText(text) : setHarText(text) }).catch(() => setError('Could not read the selected file.'))
+  }
+  function loadDemoTraffic() {
+    setHarText(JSON.stringify({ log: { entries: [
+      { request: { method: 'GET', url: 'https://fixture.local/v1/invoices/INV-1842' } },
+      { request: { method: 'GET', url: 'https://fixture.local/v1/exports/EXP-991/content' } },
+      { request: { method: 'GET', url: 'https://fixture.local/v1/internal/debug-user/88291' } },
+    ] } }, null, 2))
+    setError('')
+  }
+  async function analyze() {
+    setBusy(true); setError('')
+    try {
+      const document = JSON.parse(specText) as Record<string, unknown>
+      const har = harText.trim() ? JSON.parse(harText) as Record<string, unknown> : null
+      setResult(await api.analyze(label, document, har))
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Discovery analysis failed') }
+    finally { setBusy(false) }
+  }
+  return <><header className="page-head"><div><p className="eyebrow">Spec + traffic intelligence</p><h1>Find the boundary before attacking it.</h1><p>Import OpenAPI and optional HAR traffic. BoundaryLab derives review candidates and identifies observed routes missing from the contract without sending active requests.</p></div><div className="demo-flag"><i/>Passive analysis</div></header>
+    <section className="card discovery-input"><div className="discovery-copy"><span className="step-number">02</span><div><h2>Analyze a real API surface</h2><p>HAR headers, cookies and bodies are never persisted. Candidate rules require human approval before an active adapter can use them.</p></div></div><label>Analysis label<input value={label} maxLength={120} onChange={event => setLabel(event.target.value)}/></label><div className="import-grid"><label>OpenAPI 3.x JSON<input type="file" accept="application/json,.json" onChange={event => loadFile(event.target.files?.[0], 'spec')}/><textarea value={specText} onChange={event => setSpecText(event.target.value)} spellCheck={false}/></label><label>Optional HAR JSON<input type="file" accept="application/json,.har" onChange={event => loadFile(event.target.files?.[0], 'har')}/><textarea value={harText} onChange={event => setHarText(event.target.value)} placeholder="Paste or select a HAR export to detect shadow routes" spellCheck={false}/><button className="text-link" type="button" onClick={loadDemoTraffic}>Load disclosed demo traffic</button></label></div><div className="discovery-submit"><button className="button primary" disabled={busy || !label.trim() || !specText.trim()} onClick={analyze}>{busy ? 'Analyzing…' : harText.trim() ? 'Analyze spec + traffic' : 'Analyze without active traffic'}</button><span className="micro muted">2 MB request cap · 500 paths · 5,000 HAR entries</span></div>{error && <p className="form-error" role="alert">{error}</p>}</section>
+    {result && <><section className="metrics discovery-metrics"><div><span>Operations</span><b>{result.summary.documented_operations}</b></div><div><span>Ownership candidates</span><b>{result.summary.ownership_candidates}</b></div><div className={result.summary.shadow_operations ? 'metric-danger' : ''}><span>Shadow routes</span><b>{result.summary.shadow_operations}</b></div><div><span>HAR entries</span><b>{result.summary.har_entries}</b></div></section><section className="discovery-grid"><div className="card"><div className="section-head"><div><p className="eyebrow">Policy candidates</p><h2>Dual-identity replay plan</h2></div><code>{result.spec.sha256.slice(0,12)}…</code></div>{result.invariant_candidates.length ? <div className="candidate-list">{result.invariant_candidates.map(candidate => <article key={candidate.id}><div><code>{candidate.method} {candidate.path}</code><span className={`confidence confidence-${candidate.confidence}`}>{candidate.confidence}</span></div><h3>{candidate.operation_id}</h3><p>{candidate.proposed_rule}</p><small>{candidate.required_setup}</small></article>)}</div> : <div className="empty-small">No resource-ID read/update operations were inferred. Review the contract manually.</div>}</div><aside className="card shadow-panel"><p className="eyebrow">Traffic diff</p><h2>{result.traffic_diff.provided ? 'Observed vs documented' : 'Add HAR for shadow routes'}</h2>{result.traffic_diff.shadow_operations.map(item => <div className="shadow-route" key={`${item.method}-${item.path}`}><code>{item.method}</code><strong>{item.path}</strong><span>{item.sample_count}× · {item.risk}</span></div>)}{result.traffic_diff.provided && !result.traffic_diff.shadow_operations.length && <p className="success-note">No unmatched routes in this traffic sample.</p>}<div className="notice">Unobserved operations are not labelled zombie APIs because a HAR sample can be incomplete.</div></aside></section></>}
+  </>
+}
+
+function PolicyView({ policy, spec }: { policy: { approved: boolean; sha256: string; document: Record<string, any> } | null; spec: SpecSummary | null }) {
   if (!policy || !spec) return <section className="empty-state"><div className="spinner"/><h2>Loading reviewed policy</h2></section>
   const document = policy.document
   return <><header className="page-head"><div><p className="eyebrow">Policy before probing</p><h1>Define the boundary explicitly.</h1><p>Schema tells us how to call the API. This reviewed contract tells us what access should mean.</p></div><StatusBadge value={policy.approved ? 'approved' : 'draft'}/></header>
@@ -176,15 +234,16 @@ export default function App() {
   const [runs, setRuns] = useState<Run[]>([])
   const [selectedRun, setSelectedRun] = useState<Run | null>(null)
   const [policy, setPolicy] = useState<any>(null)
-  const [spec, setSpec] = useState<any>(null)
+  const [spec, setSpec] = useState<SpecSummary | null>(null)
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
 
   const loadRuns = useCallback(async () => {
     const list = await api.runs(); setRuns(list)
     if (selectedRun) { const updated = await api.run(selectedRun.id); setSelectedRun(updated) }
   }, [selectedRun?.id])
   const loadWorkspace = useCallback(async () => {
-    const [targetData, runData, policyData, specData] = await Promise.all([api.targets(), api.runs(), api.policy(), api.spec()])
-    setTargets(targetData); setRuns(runData); setPolicy(policyData); setSpec(specData)
+    const [targetData, runData, policyData, specData, capabilityData] = await Promise.all([api.targets(), api.runs(), api.policy(), api.spec(), api.capabilities()])
+    setTargets(targetData); setRuns(runData); setPolicy(policyData); setSpec(specData); setCapabilities(capabilityData)
     if (runData[0]) setSelectedRun(await api.run(runData[0].id))
   }, [])
   useEffect(() => { api.restoreSession().then(() => setAuth('ready')).catch(() => setAuth('login')) }, [])
@@ -198,7 +257,8 @@ export default function App() {
   if (auth === 'login') return <Login onLogin={() => setAuth('ready')}/>
   return <div className="app-shell"><SideNav view={view} setView={setView} logout={logout}/><main className="content">
     <div className="topbar"><span><i/>Live local control plane</span><span>Policy <code>invoice-policy-v1</code></span></div>
-    {view === 'runs' && <RunsView targets={targets} runs={runs} selectedRun={selectedRun} select={select} refresh={loadRuns}/>}
+    {view === 'runs' && <RunsView targets={targets} runs={runs} selectedRun={selectedRun} select={select} refresh={loadRuns} capabilities={capabilities}/>}
+    {view === 'discovery' && <DiscoveryView spec={spec}/>}
     {view === 'policy' && <PolicyView policy={policy} spec={spec}/>}
     {view === 'compare' && <CompareView runs={runs}/>}
     {view === 'reports' && <ReportsView runs={runs}/>}

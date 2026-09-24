@@ -152,22 +152,28 @@ schemas = {
     'IdentityReference': identity_schema,
     'PolicyDocument': policy_schema.copy(),
     'SessionRequest': obj({'bootstrap_secret': {**STR, 'writeOnly': True}}),
-    'Session': obj({'operator': STR, 'csrf_token': STR, 'expires_at': {'type':'string','format':'date-time'}}),
-    'Target': obj({'id':STR, 'alias':STR, 'origin':STR, 'scope_hash':HASH, 'limits':limit_schema}),
+    'Session': obj({'operator': STR, 'csrf_token': STR, 'expires_in_seconds': {'type':'integer','minimum':1}}),
+    'RestoredSession': obj({'operator': STR, 'authenticated': BOOL, 'csrf_token': STR}),
+    'Target': obj({'alias':STR, 'label':STR, 'origin':STR, 'synthetic_fixture':BOOL,
+                   'limits':obj({'requests':INT,'requests_per_second':INT,'in_flight':INT,'response_bytes':INT})}),
     'SpecImport': obj({'project_id':STR, 'document': {'type':'object','additionalProperties':True}}),
     'OperationCoverage': obj({'operation_id':STR, 'status': {'enum':['supported','unsupported','not_selected']}, 'reason':STR}),
     'Spec': obj({'id':STR, 'sha256':HASH, 'operations':arr(ref('OperationCoverage'))}),
     'PolicyCreate': obj({'project_id':STR, 'spec_id':STR, 'document':ref('PolicyDocument')}),
     'Policy': obj({'id':STR, 'version':{'type':'integer','minimum':1}, 'sha256':HASH, 'approved':BOOL, 'document':ref('PolicyDocument')}),
     'Approval': obj({'sha256':HASH, 'policy_owner_attestation':{**STR,'maxLength':500}}),
-    'RunCreate': obj({'project_id':STR, 'spec_id':STR, 'policy_id':STR, 'target_scope_id':STR}),
+    'RunCreate': obj({'target_alias':STR}),
     'Fingerprints': obj({'policy_hash':HASH,'spec_hash':HASH,'suite_hash':HASH,'fixture_semantics_hash':HASH,'engine_version':STR}),
     'Counts': obj({key:INT for key in VERDICTS}),
     'Run': obj({'id':STR, 'state':{'enum':RUN_STATES}, 'assessment':{'enum':ASSESSMENTS+[None]},
                  'has_incomplete_cases':BOOL, 'target_alias':STR, 'build_id':{'type':['string','null']},
-                 'fingerprints':ref('Fingerprints'), 'counts':ref('Counts'), 'request_count':INT,
-                 'cleanup_status':{'enum':['not_started','pending','complete','failed']}}),
-    'Event': obj({'id':STR,'run_id':STR,'type':STR,'offset_ms':INT,'message':STR}),
+                 'counts':ref('Counts'), 'request_count':INT, 'cancellation_requested':BOOL,
+                 'cleanup_status':{'enum':['not_started','pending','complete','failed']},
+                 'execution_error':{'type':['string','null']}, 'created_at':STR, 'updated_at':STR,
+                 'started_at':{'type':['string','null']}, 'completed_at':{'type':['string','null']}},
+               ['id','state','assessment','has_incomplete_cases','target_alias','build_id','counts','request_count',
+                'cancellation_requested','cleanup_status','execution_error','created_at','updated_at','started_at','completed_at']),
+    'Event': obj({'id':INT,'run_id':STR,'type':STR,'message':STR,'created_at':STR}),
     'Evidence': obj({'id':STR,'operation_id':STR,'identity':STR,'method':STR,'templated_path':STR,
                       'status_code':{'type':['integer','null']},'marker_match':{'type':['boolean','null']},
                       'redacted_excerpt':{'type':'string','maxLength':8192},'start_offset_ms':INT,'duration_ms':INT,'sha256':HASH}),
@@ -178,14 +184,29 @@ schemas = {
                      'severity':{'enum':['high','medium','low']},'rule_id':STR,'explanation':STR,'evidence_ids':arr(STR)}),
     'Results': obj({'run_id':STR,'cases':arr(ref('CaseResult')),'findings':arr(ref('Finding')),'evidence':arr(ref('Evidence'))}),
     'ComparisonRequest': obj({'run_ids':arr(STR,minItems=2,maxItems=3,uniqueItems=True)}),
-    'Comparison': obj({'compatible':{'const':True},'runs':arr(ref('Run'),minItems=2,maxItems=3),'results':arr(ref('Results'))}),
+    'ComparisonOutcome': obj({'run_id':STR,'target_alias':STR,'build_id':{'type':['string','null']},
+                              'verdict':{'enum':VERDICTS},'kind':{'type':['string','null']}}),
+    'ComparisonRow': obj({'case_id':STR,'name':STR,'outcomes':arr(ref('ComparisonOutcome'),minItems=2,maxItems=3)}),
+    'Comparison': obj({'compatible':{'const':True},'policy_version':STR,
+                       'runs':arr(ref('Run'),minItems=2,maxItems=3),'rows':arr(ref('ComparisonRow'))}),
     'ArtifactRequest': obj({'format':{'enum':['report_html','results_json']}}),
-    'Artifact': obj({'id':STR,'format':{'enum':['report_html','results_json']},'sha256':HASH,'download_path':STR})}
+    'Artifact': obj({'id':STR,'run_id':STR,'format':{'enum':['report_html','results_json']},
+                     'sha256':HASH,'created_at':STR,'download_path':STR}),
+    'DiscoveryRequest': obj({'label':{**STR,'maxLength':120},'document':{'type':'object','additionalProperties':True},
+                             'har':{'type':['object','null'],'additionalProperties':True}}),
+    'DiscoveryAnalysis': {'type':'object','additionalProperties':True,
+                          'required':['id','label','created_at','analysis_version','spec','summary','operations',
+                                      'invariant_candidates','traffic_diff','safety','limitations']},
+    'ExplanationRequest': obj({'mode':{'enum':['deterministic','ai']}}),
+    'Explanation': {'type':'object','additionalProperties':True,
+                    'required':['id','run_id','mode','provider_status','summary','risk','root_causes',
+                                'remediation_steps','regression_checks','patch_outline','limitations']},
+    'Capabilities': {'type':'object','additionalProperties':True,'required':['discovery','remediation']}}
 schemas['PolicyDocument'].pop('$id', None)
 schemas['PolicyDocument'].pop('$schema', None)
 
-control = {'openapi':'3.1.0', 'info':{'title':'BoundaryLab control API — specification only','version':'0.1.0'},
-           'servers':[{'url':'http://127.0.0.1:8080/api/v1','description':'Intended local development server; not currently implemented'}],
+control = {'openapi':'3.1.0', 'info':{'title':'SentinelAPI BoundaryLab control API','version':'0.2.0'},
+           'servers':[{'url':'http://127.0.0.1:8080/api/v1','description':'Implemented local single-operator control plane'}],
            'security':[{'OperatorSession':[]}], 'paths':{},
            'components':{'securitySchemes':{'OperatorSession':{'type':'apiKey','in':'cookie','name':'boundarylab_session'}},'schemas':schemas}}
 
@@ -207,23 +228,26 @@ def add_control(path, method, operation, summary, response_schema=None, request_
     control['paths'].setdefault(path,{})[method]=op
     return op
 
-add_control('/session','post','createSession','Local bootstrap login; Origin checked; request body not logged',ref('Session'),ref('SessionRequest'),public=True)
+add_control('/session','post','createSession','Local bootstrap login; Origin checked; request body not logged',ref('Session'),ref('SessionRequest'),'201',public=True)
+add_control('/session','get','getSession','Restore an authenticated local session',ref('RestoredSession'))
 add_control('/session','delete','deleteSession','Invalidate session',status='204')
 add_control('/targets','get','listTargets','Trusted configured targets',arr(ref('Target')))
-add_control('/specs','post','importSpec','Import OpenAPI 3.1 JSON; 1 MiB cap; no external refs',ref('Spec'),ref('SpecImport'),'201')
-add_control('/policies','post','createPolicy','Create immutable validated policy version',ref('Policy'),ref('PolicyCreate'),'201')
-add_control('/policies/{policy_id}/approval','post','approvePolicy','Approve exact policy hash',ref('Policy'),ref('Approval'))
-op=add_control('/runs','post','createRun','Queue approved scope and policy',ref('Run'),ref('RunCreate'),'202')
-op['parameters'].append({'name':'Idempotency-Key','in':'header','required':True,'schema':{**STR,'maxLength':120}})
+add_control('/capabilities','get','getCapabilities','Runtime discovery and remediation capability disclosure',ref('Capabilities'))
+add_control('/policy','get','getPolicy','Reviewed invoice permission policy and exact hash',{'type':'object','additionalProperties':True})
+add_control('/spec','get','getSpecification','Bundled target contract and operation inventory',{'type':'object','additionalProperties':True})
+add_control('/discovery/analyses','post','createDiscoveryAnalysis','Passively analyze OpenAPI plus optional HAR; 2 MB cap; no external refs',ref('DiscoveryAnalysis'),ref('DiscoveryRequest'),'201')
+op=add_control('/discovery/analyses','get','listDiscoveryAnalyses','List persisted passive analyses',arr(ref('DiscoveryAnalysis')))
+op['parameters']=[{'name':'limit','in':'query','schema':{'type':'integer','minimum':1,'maximum':50,'default':20}}]
+add_control('/runs','post','createRun','Queue a trusted target adapter and approved scenario',ref('Run'),ref('RunCreate'),'202')
 op=add_control('/runs','get','listRuns','Recent runs',arr(ref('Run')))
 op['parameters']=[{'name':'limit','in':'query','schema':{'type':'integer','minimum':1,'maximum':100,'default':20}}]
-add_control('/runs/{run_id}','get','getRun','Run state and scoped assessment',ref('Run'))
-op=add_control('/runs/{run_id}/events','get','getEvents','Ordered events after cursor',obj({'events':arr(ref('Event')),'next_cursor':{'type':['string','null']}}))
-op['parameters'] += [{'name':'cursor','in':'query','schema':STR},{'name':'limit','in':'query','schema':{'type':'integer','minimum':1,'maximum':100,'default':100}}]
-add_control('/runs/{run_id}/results','get','getResults','Cases, findings and sanitized evidence',ref('Results'))
+add_control('/runs/{run_id}','get','getRun','Run state, scoped assessment and report',{'type':'object','additionalProperties':True})
+op=add_control('/runs/{run_id}/events','get','getEvents','Ordered events after cursor',obj({'events':arr(ref('Event')),'next_cursor':INT}))
+op['parameters'] += [{'name':'after','in':'query','schema':{'type':'integer','minimum':0,'default':0}},{'name':'limit','in':'query','schema':{'type':'integer','minimum':1,'maximum':100,'default':100}}]
 add_control('/runs/{run_id}/cancel','post','cancelRun','Idempotent cancellation request',ref('Run'),'dummy' if False else None,'202')
-add_control('/comparisons','post','compareRuns','Compare 2–3 compatible completed runs; 409 on fingerprint mismatch',ref('Comparison'),ref('ComparisonRequest'))
+add_control('/comparisons','post','compareRuns','Compare 2–3 compatible completed runs; 409 on policy/case mismatch',ref('Comparison'),ref('ComparisonRequest'))
 add_control('/runs/{run_id}/artifacts','post','createArtifact','Generate sanitized report with replay manifest',ref('Artifact'),ref('ArtifactRequest'),'201')
+add_control('/runs/{run_id}/explanations','post','createExplanation','Persist deterministic triage or explicit opt-in structured AI remediation',ref('Explanation'),ref('ExplanationRequest'),'201')
 op=add_control('/artifacts/{artifact_id}','get','getArtifact','Download authorized generated artifact')
 op['responses']['200']['content']={'text/html':{'schema':{'type':'string'}},'application/json':{'schema':{'type':'object'}}}
 write('contracts/control-api.openapi.json',control)
@@ -231,7 +255,7 @@ write('contracts/control-api.openapi.json',control)
 invoice = obj({'id':STR,'owner_id':STR,'tenant_id':STR,'content_marker':STR,'internal_bank_ref':STR}, ['id','owner_id','tenant_id','content_marker'])
 export = obj({'id':STR,'invoice_id':STR,'creator_id':STR,'state':{'enum':['queued','ready']}})
 demo = {'openapi':'3.1.0','info':{'title':'BoundaryLab synthetic invoice fixture API','version':'1.0.0',
-                                'description':'Planned test target; seeded defects are disclosed in fixture-manifest.json. No lab-admin routes are scan targets.'},
+                                'description':'Implemented synthetic test target; seeded defects are disclosed in fixture-manifest.json. No lab-admin routes are scan targets.'},
         'servers':[{'url':'http://demo-fixed:8000','description':'Informational only; scanner requires trusted target alias'}],
         'security':[{'BearerAuth':[]}], 'paths':{},
         'components':{'securitySchemes':{'BearerAuth':{'type':'http','scheme':'bearer'}},
@@ -260,8 +284,8 @@ add_demo('/v1/invoices/{invoice_id}/exports','post','queueExport',ref('Export'),
 add_demo('/v1/exports/{export_id}','get','getExport',ref('Export'))
 add_demo('/v1/exports/{export_id}/content','get','getExportContent',obj({'invoice_id':STR,'content_marker':STR}))
 write('contracts/demo-api.openapi.json',demo)
-write('design/tokens.json',{'status':'design_tokens', 'colors':{'canvas':'#f4f5f2','surface':'#ffffff','ink':'#192c2b','muted':'#526561','action':'#00695c',
-                                                            'border':'#d6ded9','danger':'#a82b29','warning':'#855500','success':'#176642'},
+write('design/tokens.json',{'status':'implemented_design_tokens', 'colors':{'canvas':'#f3f5f8','surface':'#ffffff','ink':'#0b1b33','muted':'#536174','action':'#b4232b',
+                                                            'border':'#dce2ea','danger':'#8f1e27','warning':'#855500','success':'#15365e'},
                             'spacing_px':[4,8,12,16,24,32,48], 'radius_px':12,'min_control_height_px':44,
                             'font':{'body':'system-ui, sans-serif','code':'ui-monospace, monospace'},'max_content_width_px':1360})
 print('Generated 7 JSON contract/example/token artifacts.')

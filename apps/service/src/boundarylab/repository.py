@@ -90,10 +90,31 @@ class Repository:
                     sha256 TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS discovery_analyses (
+                    id TEXT PRIMARY KEY,
+                    label TEXT NOT NULL,
+                    spec_sha256 TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_discovery_created_at ON discovery_analyses(created_at DESC);
+                CREATE TABLE IF NOT EXISTS explanations (
+                    id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+                    mode TEXT NOT NULL,
+                    model TEXT,
+                    result_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(run_id, mode, model)
+                );
                 """
             )
             connection.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(1, ?)",
+                (utc_now(),),
+            )
+            connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(2, ?)",
                 (utc_now(),),
             )
             now = utc_now()
@@ -253,6 +274,53 @@ class Repository:
         with self.connection() as connection:
             row = connection.execute("SELECT * FROM artifacts WHERE id=?", (artifact_id,)).fetchone()
         return dict(row) if row else None
+
+    def create_discovery_analysis(self, label: str, result: dict[str, Any]) -> dict[str, Any]:
+        analysis_id = f"analysis_{secrets.token_hex(8)}"
+        created_at = utc_now()
+        with self.connection() as connection:
+            connection.execute(
+                "INSERT INTO discovery_analyses(id,label,spec_sha256,result_json,created_at) VALUES(?,?,?,?,?)",
+                (
+                    analysis_id,
+                    label,
+                    result["spec"]["sha256"],
+                    json.dumps(result, separators=(",", ":")),
+                    created_at,
+                ),
+            )
+        return {"id": analysis_id, "label": label, "created_at": created_at, **result}
+
+    def list_discovery_analyses(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                "SELECT id,label,spec_sha256,result_json,created_at FROM discovery_analyses ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "label": row["label"],
+                "created_at": row["created_at"],
+                **json.loads(row["result_json"]),
+            }
+            for row in rows
+        ]
+
+    def save_explanation(self, run_id: str, result: dict[str, Any]) -> dict[str, Any]:
+        explanation_id = f"explanation_{secrets.token_hex(8)}"
+        created_at = utc_now()
+        mode = str(result["mode"])
+        model = result.get("model")
+        model_key = model or ""
+        with self.connection() as connection:
+            connection.execute(
+                """INSERT INTO explanations(id,run_id,mode,model,result_json,created_at) VALUES(?,?,?,?,?,?)
+                   ON CONFLICT(run_id,mode,model) DO UPDATE SET
+                     id=excluded.id,result_json=excluded.result_json,created_at=excluded.created_at""",
+                (explanation_id, run_id, mode, model_key, json.dumps(result, separators=(",", ":")), created_at),
+            )
+        return {"id": explanation_id, "run_id": run_id, "created_at": created_at, **result}
 
     @staticmethod
     def _run_row(row: sqlite3.Row) -> dict[str, Any]:

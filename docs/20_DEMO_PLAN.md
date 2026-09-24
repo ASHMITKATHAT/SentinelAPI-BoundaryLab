@@ -4,14 +4,14 @@ Length: 5 minutes, plus questions. Use only the team's local authorized fixture.
 
 | Time | Screen/action | Spoken point | Visible proof |
 |---|---|---|---|
-| 0:00–0:30 | Show invoice sharing and policy | “Alice removed Bob. Can he still download an export he queued earlier?” | Identities, one invoice, explicit 2-second revocation policy |
-| 0:30–1:00 | Show imported spec and scope | “We test the declared operations with real identities and synthetic data.” | Supported operations, target alias, limits, approved policy |
-| 1:00–2:00 | Start vulnerable run | “Watch the permission timeline.” | Actual grant/queue/ready/revoke/probe requests; Bob gets marker after deadline |
-| 2:00–2:35 | Open evidence | “This is the expected rule, returned marker and measured time.” | Redacted request/response, valid identity, build and rule IDs |
-| 2:35–3:25 | Compare owner-only implementation | “Blocking all collaborators hides the leak but breaks the product.” | Failed active-sharing controls and incomplete temporal case |
-| 3:25–4:10 | Compare correct implementation | “This fix meets both allowed and denied behavior in our tested scope.” | Same policy/suite, legitimate access preserved, post-revoke denial |
-| 4:10–4:35 | Export report | “The result becomes a repeatable release check.” | Actual JSON/HTML with coverage and reproduction manifest |
-| 4:35–5:00 | Business and boundary | “Our first buyer owns SaaS sharing/export regressions. We are validating a paid local-runner pilot.” | One buyer, one workflow, no unsupported market claims |
+| 0:00–0:35 | Discovery: load disclosed traffic and analyze | “The spec says ten operations; traffic also reveals an undocumented internal route.” | Passive shadow-route diff and review-required ownership candidates |
+| 0:35–1:00 | Show policy | “Alice removed Bob. Can he still download an export he queued earlier?” | Explicit 2-second revocation promise and supported operations |
+| 1:00–1:55 | Start vulnerable run | “Watch the permission lifecycle, with live requests under two identities.” | Actual grant/queue/ready/revoke/probe requests; Bob gets marker after deadline |
+| 1:55–2:30 | Open evidence and remediation | “The verdict is deterministic; remediation explains the missing guard.” | Sanitized evidence, reason code and framework-neutral guard outline |
+| 2:30–3:25 | Compare owner-only implementation | “Blocking all collaborators hides the leak but breaks the product.” | Failed active-sharing controls and incomplete temporal case |
+| 3:25–4:10 | Compare correct implementation | “This fix meets allowed and denied behavior in our tested scope.” | Same policy/suite, legitimate access preserved, post-revoke denial |
+| 4:10–4:35 | Export report and show CI command | “The result becomes a repeatable release gate.” | Actual artifact hash and non-zero failure policy |
+| 4:35–5:00 | Business and boundary | “Our first buyer owns SaaS sharing/export regressions. We are validating a paid local-runner pilot.” | One buyer, one workflow, no unsupported production claim |
 
 If three live runs do not fit five minutes, run the vulnerable case live and show clearly dated actual prior runs for comparison, with build/hash compatibility. Say which runs were recorded. Keep one correct-build rerun available for questions.
 

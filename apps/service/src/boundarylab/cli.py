@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ipaddress
 import json
+import socket
+from urllib.parse import urlsplit
 
 import httpx
 
 from .fixture import Variant, create_fixture_app
 from .scenario import InvoiceScenario, ScenarioPolicy
+from .serialization import report_to_dict
 from .transport import ScopedTransport, TransportLimits
 
 
@@ -50,23 +54,90 @@ async def matrix(benchmark_speed: bool) -> list[dict]:
     return [await run_variant(variant, benchmark_speed=benchmark_speed) for variant in Variant]
 
 
+def validate_local_target(origin: str) -> str:
+    parsed = urlsplit(origin)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("target must be an HTTP(S) origin without credentials")
+    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        raise ValueError("target must be an origin without path, query or fragment")
+    try:
+        addresses = {
+            ipaddress.ip_address(item[4][0].split("%", 1)[0])
+            for item in socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+        }
+    except (OSError, ValueError) as exc:
+        raise ValueError("target hostname could not be resolved safely") from exc
+    if not addresses or any(not address.is_loopback for address in addresses):
+        raise ValueError("CI gate accepts loopback targets only; remote execution requires a reviewed runner adapter")
+    return origin.rstrip("/")
+
+
+async def gate(origin: str, alias: str) -> dict:
+    trusted_origin = validate_local_target(origin)
+    limits = httpx.Limits(max_connections=1, max_keepalive_connections=1)
+    async with httpx.AsyncClient(
+        timeout=None,
+        follow_redirects=False,
+        trust_env=False,
+        limits=limits,
+        headers={"User-Agent": "BoundaryLab/0.2 CI-gate"},
+    ) as client:
+        report = await InvoiceScenario(
+            ScopedTransport(client, base_url=trusted_origin, limits=TransportLimits()),
+            target_alias=alias,
+        ).run()
+    return report_to_dict(report)
+
+
+def gate_exit_code(report: dict, fail_on: set[str]) -> int:
+    counts = report.get("counts", {})
+    blocked = "violation" in fail_on and int(counts.get("violation", 0)) > 0
+    incomplete = "inconclusive" in fail_on and (
+        int(counts.get("inconclusive", 0)) > 0 or bool(report.get("has_incomplete_cases"))
+    )
+    execution = "execution_error" in fail_on and bool(report.get("execution_error"))
+    return 1 if blocked or incomplete or execution else 0
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run BoundaryLab's local synthetic fixture matrix")
-    parser.add_argument("command", choices=["matrix"])
-    parser.add_argument(
+    parser = argparse.ArgumentParser(description="Run BoundaryLab authorization regression checks")
+    commands = parser.add_subparsers(dest="command", required=True)
+    matrix_parser = commands.add_parser("matrix", help="run the three in-process disclosed fixture builds")
+    matrix_parser.add_argument(
         "--fast",
         action="store_true",
         help="Use reduced timing only for development verification; does not validate the 2-second policy timing",
     )
+    gate_parser = commands.add_parser("gate", help="run the policy suite against a trusted loopback target")
+    gate_parser.add_argument("--target", required=True, help="loopback HTTP(S) origin")
+    gate_parser.add_argument("--alias", default="ci-target")
+    gate_parser.add_argument(
+        "--fail-on",
+        default="violation,inconclusive,execution_error",
+        help="comma-separated: violation,inconclusive,execution_error",
+    )
     args = parser.parse_args()
-    results = asyncio.run(matrix(args.fast))
-    print(json.dumps({"status": "executed_local_asgi_fixture_matrix", "results": results}, indent=2))
-    expected = {
-        "demo-vulnerable": {"pass": 8, "violation": 4, "inconclusive": 0, "skipped": 0},
-        "demo-owner-only": {"pass": 7, "violation": 2, "inconclusive": 3, "skipped": 0},
-        "demo-fixed": {"pass": 12, "violation": 0, "inconclusive": 0, "skipped": 0},
-    }
-    return 0 if all(item["counts"] == expected[item["target"]] and item["cleanup_status"] == "complete" for item in results) else 1
+    if args.command == "matrix":
+        results = asyncio.run(matrix(args.fast))
+        print(json.dumps({"status": "executed_local_asgi_fixture_matrix", "results": results}, indent=2))
+        expected = {
+            "demo-vulnerable": {"pass": 8, "violation": 4, "inconclusive": 0, "skipped": 0},
+            "demo-owner-only": {"pass": 7, "violation": 2, "inconclusive": 3, "skipped": 0},
+            "demo-fixed": {"pass": 12, "violation": 0, "inconclusive": 0, "skipped": 0},
+        }
+        return 0 if all(item["counts"] == expected[item["target"]] and item["cleanup_status"] == "complete" for item in results) else 1
+
+    allowed = {"violation", "inconclusive", "execution_error"}
+    fail_on = {item.strip() for item in args.fail_on.split(",") if item.strip()}
+    unknown = fail_on - allowed
+    if unknown:
+        parser.error(f"unknown --fail-on values: {', '.join(sorted(unknown))}")
+    try:
+        report = asyncio.run(gate(args.target, args.alias))
+    except ValueError as exc:
+        parser.error(str(exc))
+    print(json.dumps({"status": "executed_live_ci_gate", "report": report}, indent=2))
+    return gate_exit_code(report, fail_on)
 
 
 if __name__ == "__main__":

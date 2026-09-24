@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import secrets
 from pathlib import Path
 
@@ -45,6 +46,8 @@ def main() -> None:
         database_path=args.data_dir / "boundarylab.db",
         bootstrap_secret=secret,
         targets=default_targets(),
+        openai_api_key=os.environ.get("OPENAI_API_KEY") or None,
+        ai_model=os.environ.get("BOUNDARYLAB_AI_MODEL", "gpt-6-astra"),
     )
     asyncio.run(serve(settings))
 

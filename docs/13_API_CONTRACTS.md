@@ -1,32 +1,37 @@
 # API contracts and adapter boundary
 
-Machine sources: [control API OpenAPI](../contracts/control-api.openapi.json), [fixture API OpenAPI](../contracts/demo-api.openapi.json), [policy schema](../contracts/policy.schema.json). These are contract artifacts, not running endpoints.
+Machine sources: [control API OpenAPI](../contracts/control-api.openapi.json), [fixture API OpenAPI](../contracts/demo-api.openapi.json), [policy schema](../contracts/policy.schema.json). The first two describe the implemented local services; the policy schema remains the authoritative supported invoice scenario.
 
 ## Control plane `/api/v1`
 
 | Method and route | Behavior |
 |---|---|
 | POST `/session` | Exchange local bootstrap secret for opaque operator session; never log request body |
+| GET `/session` | Restore session and its CSRF token after a browser reload |
 | DELETE `/session` | Invalidate current session |
-| GET `/targets` | Return trusted aliases, scope hashes and safe limits; never credentials |
-| POST `/specs` | Import JSON object in a typed request; return normalized hash and operation coverage |
-| POST `/policies` | Validate a policy against schema and selected spec; create immutable version |
-| POST `/policies/{policy_id}/approval` | Approve exact hash with recorded policy-owner attestation |
-| POST `/runs` | Require approved policy/scope; create queued run, 202 |
+| GET `/targets` | Return trusted aliases and safe execution limits; never credentials |
+| GET `/capabilities` | Disclose passive discovery, trusted-adapter execution and configured remediation modes |
+| GET `/policy` | Return the bundled reviewed policy and canonical SHA-256 |
+| GET `/spec` | Return the bundled fixture contract and operation inventory |
+| POST `/discovery/analyses` | Passively analyze OpenAPI 3.x plus optional HAR; persist derived metadata only |
+| GET `/discovery/analyses` | Return recent persisted discovery results |
+| POST `/runs` | Require a trusted target alias; create queued run, 202 |
 | GET `/runs` | Bounded recent run list for comparisons |
 | GET `/runs/{run_id}` | Return state, scope, case counts, assessment and cleanup state |
 | GET `/runs/{run_id}/events` | Cursor-based ordered events, max 100 per page |
-| GET `/runs/{run_id}/results` | Case results, findings and evidence references |
 | POST `/runs/{run_id}/cancel` | Idempotent cancellation request; terminal runs return their existing state |
 | POST `/comparisons` | Compare 2–3 compatible completed runs; return mismatch details on 409 |
 | POST `/runs/{run_id}/artifacts` | Generate `report_html` or `results_json` plus replay manifest |
+| POST `/runs/{run_id}/explanations` | Generate persisted deterministic or explicitly requested AI remediation |
 | GET `/artifacts/{artifact_id}` | Authorized binary/text download by opaque ID |
 
-GET routes require the operator cookie. Mutating routes except session creation also require `X-CSRF-Token`, and all browser requests enforce approved Origin. Session creation checks origin and rate limits. Implementation uses appropriate Secure cookie settings for HTTPS; the explicit local HTTP development profile cannot claim transport encryption.
+GET routes require the operator cookie. Mutating routes except session creation also require `X-CSRF-Token`, and all browser requests enforce approved Origin. Session creation checks Origin. Cookies are HTTP-only and same-site strict. Secure cookies are enabled by configuration for HTTPS; the explicit local HTTP development profile cannot claim transport encryption.
 
-POST `/runs` accepts `Idempotency-Key`. Repeating the same key and canonical body returns the same run; changed body returns 409. Retain key mapping for 24 hours in P0. Creating a second run may queue it; only one executes at a time. Queue length cap 10; overflow 429 with retry guidance.
+Only one run executes at a time. Queue length is capped at 10 and overflow returns 429. Idempotency-key persistence is a staging-pilot requirement and is not claimed by the current local API.
 
-Errors use `{error:{code,message,request_id,details}}`; never include exception stacks or credential values. Important codes: `INVALID_SPEC`, `UNSUPPORTED_SPEC`, `POLICY_NOT_APPROVED`, `POLICY_SPEC_MISMATCH`, `SCOPE_DENIED`, `IDENTITY_MISMATCH`, `NON_COMPARABLE_RUNS`, `BUDGET_EXCEEDED`, `ARTIFACT_UNAVAILABLE`. Use 422 for invalid policy, 413 for oversized input, 401/403 for control-plane auth, 409 for state/hash conflicts and 503 for unavailable worker.
+Errors use `{error:{code,message,request_id}}`; never include exception stacks or credential values. Use 422 for invalid documents, 413 for oversized discovery input, 401/403 for control-plane auth, 409 for state/capability conflicts, 429 for queue pressure and 502 for a failed optional remediation provider.
+
+Discovery requests are capped at 2 MB, 500 OpenAPI paths, 2,000 operations and 5,000 HAR entries. External `$ref` values are rejected without network access. HAR headers, cookies, query strings and bodies are not stored. Candidate invariants are marked for review and cannot initiate active traffic.
 
 ## Target adapter
 

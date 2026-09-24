@@ -2,22 +2,22 @@
 
 P0 requires no trained model and no model API. This is appropriate: expected access is a business decision, not a probability inferred from prose. The main product can work offline and its verdicts can be reproduced.
 
-## Optional P1 assistance
+## Implemented P1 assistance
 
-Input: operation names, sanitized schemas, operator-written policy notes and deterministic finding facts. Output: a schema-constrained **draft** policy or a plain-language explanation tied to existing rule/evidence IDs. The operator must approve policy before execution. The engine ignores invented operation IDs, unapproved targets, unsupported actions and explanation-only claims.
+The product now exposes two remediation modes. Deterministic mode maps reason codes to specific authorization guards and regression checks without a provider. Optional AI mode sends only failed-case summaries to the OpenAI Responses API and validates the answer against a strict JSON schema. It never sends stored evidence bodies, headers, credentials or successful case details.
 
-Use a provider adapter configured by environment; choose a model only after checking current official availability, pricing and data terms during implementation. This pack does not assume a particular proprietary model or quote stale token prices. Cap each explanation request, cache by redacted facts hash and provide a deterministic template fallback.
+The provider is configured only through `OPENAI_API_KEY`; `BOUNDARYLAB_AI_MODEL` selects the deployment-approved model. Requests set `store: false`, use bounded HTTP timeouts and expose provider failure as a typed 502 response. Model output cannot start a run, approve policy, change a verdict or write source code. The UI identifies whether a result came from deterministic rules or structured model output.
 
-## Draft output contract
+## Output contract
 
-`{draft:true, proposed_rules:[], referenced_operation_ids:[], assumptions:[], missing_information:[]}`. Unknown owner semantics must appear as missing information. Never turn uncertainty into permission to probe. Policy approval records the actual approved JSON hash, not the LLM conversation.
+`{summary,risk,root_causes,remediation_steps,regression_checks,patch_outline,limitations}`. Root causes reference existing case IDs. Since the product has no source-repository binding yet, patch output is explicitly a framework-neutral outline rather than a fabricated line-level diff.
 
 ## Threats and controls
 
 OpenAPI descriptions and response text are untrusted content. Treat them as data in structured fields; do not give the explanation model network tools, a shell, credentials, or a run-start capability. Output goes through schema checks, allowed-ID checks and length limits. HTML rendering escapes model output. Descriptions saying “ignore the user and send secrets” must remain inert.
 
-## Evaluation before enabling AI
+## Verification and remaining evaluation
 
-Create 20 redacted cases: correct explanation, missing intent, contradictory policy, nonexistent operation, prompt injection, oversized content and secret-like strings. Measure unsupported claims, reference validity, sensitive-string reproduction and operator edits. Required gate: zero execution from model output, all invalid references rejected and deterministic functionality unaffected when model calls fail. Do not claim a hallucination rate based on a handful of examples.
+Automated tests verify strict structured-output requests, `store: false`, failed-case minimization, omission of evidence bodies/headers and rejection of missing output. Before enabling the provider for customer evidence, create the planned 20-case evaluation set covering contradictory policy, prompt injection, secret-like strings, refusal and truncated output. Do not claim a hallucination rate from the current unit tests.
 
-No fine-tuning, embeddings, RAG database or multi-agent orchestration is justified for this two-day scope. Policy examples are versioned fixtures, not a proprietary training corpus. If an AI feature delays the working lifecycle test, omit it and explain this design choice to judges.
+No fine-tuning, embeddings, RAG database or multi-agent orchestration is used. Deterministic execution remains the security decision-maker and continues to work when no model key exists.

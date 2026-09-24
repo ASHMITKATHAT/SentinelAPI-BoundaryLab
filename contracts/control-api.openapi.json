@@ -1,13 +1,13 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "BoundaryLab control API — specification only",
-    "version": "0.1.0"
+    "title": "SentinelAPI BoundaryLab control API",
+    "version": "0.2.0"
   },
   "servers": [
     {
       "url": "http://127.0.0.1:8080/api/v1",
-      "description": "Intended local development server; not currently implemented"
+      "description": "Implemented local single-operator control plane"
     }
   ],
   "security": [
@@ -21,7 +21,7 @@
         "operationId": "createSession",
         "summary": "Local bootstrap login; Origin checked; request body not logged",
         "responses": {
-          "200": {
+          "201": {
             "description": "Successful operation",
             "content": {
               "application/json": {
@@ -53,6 +53,32 @@
           }
         },
         "security": []
+      },
+      "get": {
+        "operationId": "getSession",
+        "summary": "Restore an authenticated local session",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoredSession"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Typed error; see documentation for 401/403/409/413/422/429/503",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       },
       "delete": {
         "operationId": "deleteSession",
@@ -116,115 +142,103 @@
         }
       }
     },
-    "/specs": {
-      "post": {
-        "operationId": "importSpec",
-        "summary": "Import OpenAPI 3.1 JSON; 1 MiB cap; no external refs",
-        "responses": {
-          "201": {
-            "description": "Successful operation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Spec"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Typed error; see documentation for 401/403/409/413/422/429/503",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "X-CSRF-Token",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SpecImport"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/policies": {
-      "post": {
-        "operationId": "createPolicy",
-        "summary": "Create immutable validated policy version",
-        "responses": {
-          "201": {
-            "description": "Successful operation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Policy"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Typed error; see documentation for 401/403/409/413/422/429/503",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "X-CSRF-Token",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PolicyCreate"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/policies/{policy_id}/approval": {
-      "post": {
-        "operationId": "approvePolicy",
-        "summary": "Approve exact policy hash",
+    "/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "summary": "Runtime discovery and remediation capability disclosure",
         "responses": {
           "200": {
             "description": "Successful operation",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Policy"
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Typed error; see documentation for 401/403/409/413/422/429/503",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/policy": {
+      "get": {
+        "operationId": "getPolicy",
+        "summary": "Reviewed invoice permission policy and exact hash",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Typed error; see documentation for 401/403/409/413/422/429/503",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spec": {
+      "get": {
+        "operationId": "getSpecification",
+        "summary": "Bundled target contract and operation inventory",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Typed error; see documentation for 401/403/409/413/422/429/503",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/discovery/analyses": {
+      "post": {
+        "operationId": "createDiscoveryAnalysis",
+        "summary": "Passively analyze OpenAPI plus optional HAR; 2 MB cap; no external refs",
+        "responses": {
+          "201": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryAnalysis"
                 }
               }
             }
@@ -242,15 +256,6 @@
         },
         "parameters": [
           {
-            "name": "policy_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          {
             "name": "X-CSRF-Token",
             "in": "header",
             "required": true,
@@ -265,17 +270,58 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Approval"
+                "$ref": "#/components/schemas/DiscoveryRequest"
               }
             }
           }
         }
+      },
+      "get": {
+        "operationId": "listDiscoveryAnalyses",
+        "summary": "List persisted passive analyses",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DiscoveryAnalysis"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Typed error; see documentation for 401/403/409/413/422/429/503",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ]
       }
     },
     "/runs": {
       "post": {
         "operationId": "createRun",
-        "summary": "Queue approved scope and policy",
+        "summary": "Queue a trusted target adapter and approved scenario",
         "responses": {
           "202": {
             "description": "Successful operation",
@@ -306,16 +352,6 @@
             "schema": {
               "type": "string",
               "minLength": 1
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 120
             }
           }
         ],
@@ -375,14 +411,15 @@
     "/runs/{run_id}": {
       "get": {
         "operationId": "getRun",
-        "summary": "Run state and scoped assessment",
+        "summary": "Run state, scoped assessment and report",
         "responses": {
           "200": {
             "description": "Successful operation",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Run"
+                  "type": "object",
+                  "additionalProperties": true
                 }
               }
             }
@@ -431,10 +468,8 @@
                       }
                     },
                     "next_cursor": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
+                      "type": "integer",
+                      "minimum": 0
                     }
                   },
                   "required": [
@@ -467,11 +502,12 @@
             }
           },
           {
-            "name": "cursor",
+            "name": "after",
             "in": "query",
             "schema": {
-              "type": "string",
-              "minLength": 1
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
             }
           },
           {
@@ -482,45 +518,6 @@
               "minimum": 1,
               "maximum": 100,
               "default": 100
-            }
-          }
-        ]
-      }
-    },
-    "/runs/{run_id}/results": {
-      "get": {
-        "operationId": "getResults",
-        "summary": "Cases, findings and sanitized evidence",
-        "responses": {
-          "200": {
-            "description": "Successful operation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Results"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Typed error; see documentation for 401/403/409/413/422/429/503",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1
             }
           }
         ]
@@ -577,7 +574,7 @@
     "/comparisons": {
       "post": {
         "operationId": "compareRuns",
-        "summary": "Compare 2–3 compatible completed runs; 409 on fingerprint mismatch",
+        "summary": "Compare 2–3 compatible completed runs; 409 on policy/case mismatch",
         "responses": {
           "200": {
             "description": "Successful operation",
@@ -675,6 +672,64 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ArtifactRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/explanations": {
+      "post": {
+        "operationId": "createExplanation",
+        "summary": "Persist deterministic triage or explicit opt-in structured AI remediation",
+        "responses": {
+          "201": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Explanation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Typed error; see documentation for 401/403/409/413/422/429/503",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExplanationRequest"
               }
             }
           }
@@ -1205,26 +1260,48 @@
             "type": "string",
             "minLength": 1
           },
-          "expires_at": {
-            "type": "string",
-            "format": "date-time"
+          "expires_in_seconds": {
+            "type": "integer",
+            "minimum": 1
           }
         },
         "required": [
           "operator",
           "csrf_token",
-          "expires_at"
+          "expires_in_seconds"
+        ]
+      },
+      "RestoredSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operator": {
+            "type": "string",
+            "minLength": 1
+          },
+          "authenticated": {
+            "type": "boolean"
+          },
+          "csrf_token": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "operator",
+          "authenticated",
+          "csrf_token"
         ]
       },
       "Target": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "id": {
+          "alias": {
             "type": "string",
             "minLength": 1
           },
-          "alias": {
+          "label": {
             "type": "string",
             "minLength": 1
           },
@@ -1232,76 +1309,43 @@
             "type": "string",
             "minLength": 1
           },
-          "scope_hash": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{64}$"
+          "synthetic_fixture": {
+            "type": "boolean"
           },
           "limits": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "max_requests": {
+              "requests": {
                 "type": "integer",
-                "minimum": 1,
-                "maximum": 200
-              },
-              "main_request_limit": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 180
-              },
-              "cleanup_request_reserve": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 20
+                "minimum": 0
               },
               "requests_per_second": {
                 "type": "integer",
-                "minimum": 1,
-                "maximum": 2
+                "minimum": 0
               },
-              "max_in_flight": {
-                "const": 1
-              },
-              "request_deadline_ms": {
+              "in_flight": {
                 "type": "integer",
-                "minimum": 1,
-                "maximum": 5000
+                "minimum": 0
               },
-              "run_deadline_ms": {
+              "response_bytes": {
                 "type": "integer",
-                "minimum": 1,
-                "maximum": 120000
-              },
-              "cleanup_time_reserve_ms": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 10000
-              },
-              "response_body_bytes": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 65536
+                "minimum": 0
               }
             },
             "required": [
-              "max_requests",
-              "main_request_limit",
-              "cleanup_request_reserve",
+              "requests",
               "requests_per_second",
-              "max_in_flight",
-              "request_deadline_ms",
-              "run_deadline_ms",
-              "cleanup_time_reserve_ms",
-              "response_body_bytes"
+              "in_flight",
+              "response_bytes"
             ]
           }
         },
         "required": [
-          "id",
           "alias",
+          "label",
           "origin",
-          "scope_hash",
+          "synthetic_fixture",
           "limits"
         ]
       },
@@ -1450,28 +1494,13 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "project_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "spec_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "policy_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "target_scope_id": {
+          "target_alias": {
             "type": "string",
             "minLength": 1
           }
         },
         "required": [
-          "project_id",
-          "spec_id",
-          "policy_id",
-          "target_scope_id"
+          "target_alias"
         ]
       },
       "Fingerprints": {
@@ -1576,9 +1605,6 @@
               "null"
             ]
           },
-          "fingerprints": {
-            "$ref": "#/components/schemas/Fingerprints"
-          },
           "counts": {
             "$ref": "#/components/schemas/Counts"
           },
@@ -1586,12 +1612,41 @@
             "type": "integer",
             "minimum": 0
           },
+          "cancellation_requested": {
+            "type": "boolean"
+          },
           "cleanup_status": {
             "enum": [
               "not_started",
               "pending",
               "complete",
               "failed"
+            ]
+          },
+          "execution_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "updated_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
             ]
           }
         },
@@ -1602,10 +1657,15 @@
           "has_incomplete_cases",
           "target_alias",
           "build_id",
-          "fingerprints",
           "counts",
           "request_count",
-          "cleanup_status"
+          "cancellation_requested",
+          "cleanup_status",
+          "execution_error",
+          "created_at",
+          "updated_at",
+          "started_at",
+          "completed_at"
         ]
       },
       "Event": {
@@ -1613,8 +1673,8 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "type": "string",
-            "minLength": 1
+            "type": "integer",
+            "minimum": 0
           },
           "run_id": {
             "type": "string",
@@ -1624,11 +1684,11 @@
             "type": "string",
             "minLength": 1
           },
-          "offset_ms": {
-            "type": "integer",
-            "minimum": 0
-          },
           "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "created_at": {
             "type": "string",
             "minLength": 1
           }
@@ -1637,8 +1697,8 @@
           "id",
           "run_id",
           "type",
-          "offset_ms",
-          "message"
+          "message",
+          "created_at"
         ]
       },
       "Evidence": {
@@ -1870,12 +1930,84 @@
           "run_ids"
         ]
       },
+      "ComparisonOutcome": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target_alias": {
+            "type": "string",
+            "minLength": 1
+          },
+          "build_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verdict": {
+            "enum": [
+              "pass",
+              "violation",
+              "inconclusive",
+              "skipped"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "run_id",
+          "target_alias",
+          "build_id",
+          "verdict",
+          "kind"
+        ]
+      },
+      "ComparisonRow": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "outcomes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComparisonOutcome"
+            },
+            "minItems": 2,
+            "maxItems": 3
+          }
+        },
+        "required": [
+          "case_id",
+          "name",
+          "outcomes"
+        ]
+      },
       "Comparison": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "compatible": {
             "const": true
+          },
+          "policy_version": {
+            "type": "string",
+            "minLength": 1
           },
           "runs": {
             "type": "array",
@@ -1885,17 +2017,18 @@
             "minItems": 2,
             "maxItems": 3
           },
-          "results": {
+          "rows": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Results"
+              "$ref": "#/components/schemas/ComparisonRow"
             }
           }
         },
         "required": [
           "compatible",
+          "policy_version",
           "runs",
-          "results"
+          "rows"
         ]
       },
       "ArtifactRequest": {
@@ -1921,6 +2054,10 @@
             "type": "string",
             "minLength": 1
           },
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
           "format": {
             "enum": [
               "report_html",
@@ -1931,6 +2068,10 @@
             "type": "string",
             "pattern": "^[a-f0-9]{64}$"
           },
+          "created_at": {
+            "type": "string",
+            "minLength": 1
+          },
           "download_path": {
             "type": "string",
             "minLength": 1
@@ -1938,9 +2079,95 @@
         },
         "required": [
           "id",
+          "run_id",
           "format",
           "sha256",
+          "created_at",
           "download_path"
+        ]
+      },
+      "DiscoveryRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "document": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "har": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "label",
+          "document",
+          "har"
+        ]
+      },
+      "DiscoveryAnalysis": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "label",
+          "created_at",
+          "analysis_version",
+          "spec",
+          "summary",
+          "operations",
+          "invariant_candidates",
+          "traffic_diff",
+          "safety",
+          "limitations"
+        ]
+      },
+      "ExplanationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "deterministic",
+              "ai"
+            ]
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "Explanation": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "run_id",
+          "mode",
+          "provider_status",
+          "summary",
+          "risk",
+          "root_causes",
+          "remediation_steps",
+          "regression_checks",
+          "patch_outline",
+          "limitations"
+        ]
+      },
+      "Capabilities": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "discovery",
+          "remediation"
         ]
       }
     }

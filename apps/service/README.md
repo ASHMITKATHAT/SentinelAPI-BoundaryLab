@@ -1,6 +1,6 @@
 # BoundaryLab service and workbench
 
-This package contains the working BoundaryLab local system: three independent synthetic invoice API modes, a deterministic 12-case authorization lifecycle runner, bounded transport, evidence minimization, SQLite persistence, a single safe worker, control APIs and report generation. The compiled React client in `apps/web/dist` is served by the same origin.
+This package contains the working BoundaryLab local system: three independent synthetic invoice API modes, a deterministic 12-case authorization lifecycle runner, bounded transport, evidence minimization, SQLite persistence, a single safe worker, passive API discovery, remediation analysis, control APIs and report generation. The compiled React client in `apps/web/dist` is served by the same origin.
 
 The developer matrix command uses in-process ASGI targets for fast tests. The mentor demo command starts four actual localhost sockets: the control plane on port 8080 and one disclosed fixture build on each of ports 9011–9013.
 
@@ -49,6 +49,27 @@ The server prints a random bootstrap secret. Open `http://127.0.0.1:8080`, authe
 ```
 
 The demo binds only to `127.0.0.1`. Do not expose this development launcher directly to a public network.
+
+## Passive discovery and shadow-route evidence
+
+Use the **Discovery** screen to import OpenAPI 3.x JSON and an optional HAR export. The analyzer stores derived operation metadata only. HAR headers, cookies, query strings and bodies are discarded. It reports observed method/path templates absent from the contract and proposes review-required ownership invariants for resource-ID operations. It sends no active traffic and does not describe an unobserved route as a zombie API.
+
+## Remediation modes
+
+Every completed run supports deterministic root-cause triage. To enable the optional model path, set `OPENAI_API_KEY`; optionally set `BOUNDARYLAB_AI_MODEL`. The model receives only failed-case summaries, uses a strict JSON schema, has no tools, cannot start runs and cannot affect verdicts. If the provider is unavailable or its response fails validation, the API fails closed and deterministic triage still works.
+
+## CI gate
+
+Start a trusted local adapter, then run:
+
+```powershell
+& '.\.venv\Scripts\python.exe' -m boundarylab.cli gate `
+  --target http://127.0.0.1:9013 `
+  --alias ci-fixed `
+  --fail-on violation,inconclusive,execution_error
+```
+
+Exit code `1` blocks the build when a selected condition is present. Remote origins are rejected because the local runner does not yet implement DNS pinning and isolated egress. `.github/workflows/boundarylab-ci.yml` exercises the fixed build with real localhost sockets.
 
 ## Implemented invariants
 

@@ -39,3 +39,21 @@ def test_queued_cancellation_is_terminal_and_evented(tmp_path):
     assert cancelled["has_incomplete_cases"] is True
     assert repository.claim_next_run() is None
     assert [event["type"] for event in repository.events(run["id"])] == ["queued", "cancelled"]
+
+
+def test_discovery_and_explanation_records_survive_repository_restart(tmp_path):
+    database = tmp_path / "boundarylab.db"
+    repository = Repository(database)
+    analysis = repository.create_discovery_analysis("orders", {
+        "spec": {"sha256": "a" * 64}, "summary": {"documented_operations": 1}
+    })
+    run = repository.create_run("demo-fixed", "http://127.0.0.1:9013")
+    explanation = repository.save_explanation(run["id"], {
+        "mode": "deterministic", "model": None, "summary": "reviewed"
+    })
+
+    restarted = Repository(database)
+    assert restarted.list_discovery_analyses()[0]["id"] == analysis["id"]
+    with restarted.connection() as connection:
+        row = connection.execute("SELECT result_json FROM explanations WHERE id=?", (explanation["id"],)).fetchone()
+    assert "reviewed" in row["result_json"]

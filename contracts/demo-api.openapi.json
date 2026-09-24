@@ -3,7 +3,7 @@
   "info": {
     "title": "BoundaryLab synthetic invoice fixture API",
     "version": "1.0.0",
-    "description": "Planned test target; seeded defects are disclosed in fixture-manifest.json. No lab-admin routes are scan targets."
+    "description": "Implemented synthetic test target; seeded defects are disclosed in fixture-manifest.json. No lab-admin routes are scan targets."
   },
   "servers": [
     {

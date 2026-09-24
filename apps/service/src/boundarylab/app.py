@@ -4,17 +4,20 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from .discovery import DiscoveryError, analyze_api_surface
+from .remediation import OpenAITriageClient, deterministic_triage
 from .reports import html_report, json_report
 from .repository import Repository, TERMINAL_STATES
 from .worker import RunWorker, TrustedTarget
@@ -31,6 +34,8 @@ class Settings:
     allowed_origins: tuple[str, ...] = ("http://127.0.0.1:8080", "http://localhost:5173")
     secure_cookie: bool = False
     web_dist: Path = ROOT / "apps" / "web" / "dist"
+    openai_api_key: str | None = None
+    ai_model: str = "gpt-6-astra"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -43,6 +48,8 @@ class Settings:
             bootstrap_secret=secret,
             targets=default_targets(),
             secure_cookie=os.environ.get("BOUNDARYLAB_SECURE_COOKIE", "false").lower() == "true",
+            openai_api_key=os.environ.get("OPENAI_API_KEY") or None,
+            ai_model=os.environ.get("BOUNDARYLAB_AI_MODEL", "gpt-6-astra"),
         )
 
 
@@ -74,6 +81,37 @@ class ArtifactCreate(BaseModel):
     format: Literal["report_html", "results_json"]
 
 
+class DiscoveryCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    label: str = Field(min_length=1, max_length=120)
+    document: dict[str, Any]
+    har: dict[str, Any] | None = None
+
+
+class ExplanationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["deterministic", "ai"] = "deterministic"
+
+
+async def validated_json(request: Request, model: type[BaseModel], *, limit: int = 2_000_000) -> BaseModel:
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type != "application/json":
+        raise HTTPException(status_code=415, detail="application/json is required")
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status_code=413, detail=f"request body exceeds {limit} bytes")
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > limit:
+            raise HTTPException(status_code=413, detail=f"request body exceeds {limit} bytes")
+    try:
+        value = json.loads(body)
+        return model.model_validate(value)
+    except (json.JSONDecodeError, ValidationError, UnicodeDecodeError, RecursionError) as exc:
+        raise HTTPException(status_code=422, detail="invalid request document") from exc
+
+
 def public_run(run: dict, *, include_report: bool = False) -> dict:
     result = {key: value for key, value in run.items() if key not in {"target_origin", "report"}}
     if include_report:
@@ -95,7 +133,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="SentinelAPI BoundaryLab control API",
-        version="0.1.0",
+        version="0.2.0",
         description="Local single-operator authorization regression workbench",
         lifespan=lifespan,
         docs_url="/api/docs",
@@ -108,12 +146,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
+        supplied_request_id = request.headers.get("x-request-id", "")
+        request.state.request_id = supplied_request_id[:80] if supplied_request_id.isascii() else ""
+        request.state.request_id = request.state.request_id or secrets.token_hex(8)
         response = await call_next(request)
+        response.headers["X-Request-ID"] = request.state.request_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
+        else:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+                "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+            )
         return response
 
     def check_origin(request: Request) -> None:
@@ -139,7 +187,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/healthz")
     async def health():
-        return {"status": "ok", "service": "boundarylab", "version": "0.1.0"}
+        return {"status": "ok", "service": "boundarylab", "version": "0.2.0"}
 
     @app.post("/api/v1/session", status_code=201)
     async def create_session(body: SessionCreate, request: Request, response: Response):
@@ -184,6 +232,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for target in configured.targets.values()
         ]
 
+    @app.get("/api/v1/capabilities")
+    async def capabilities(_: dict = Depends(session_dependency)):
+        return {
+            "discovery": {"openapi": True, "har": True, "active_replay": "trusted_adapters_only"},
+            "remediation": {
+                "deterministic": True,
+                "ai_configured": bool(configured.openai_api_key),
+                "model": configured.ai_model if configured.openai_api_key else None,
+                "data_sent": "failed case summaries only when operator explicitly selects AI mode",
+            },
+        }
+
     @app.get("/api/v1/policy")
     async def policy(_: dict = Depends(session_dependency)):
         path = ROOT / "examples" / "invoice-policy.json"
@@ -202,7 +262,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if isinstance(operation, dict) and operation.get("operationId")
         ]
         return {"title": document["info"]["title"], "version": document["info"]["version"],
-                "openapi": document["openapi"], "operation_count": len(operations), "operations": operations}
+                "openapi": document["openapi"], "operation_count": len(operations), "operations": operations,
+                "document": document}
+
+    @app.post("/api/v1/discovery/analyses", status_code=201)
+    async def create_discovery_analysis(request: Request, _: dict = Depends(mutation_dependency)):
+        body = await validated_json(request, DiscoveryCreate)
+        assert isinstance(body, DiscoveryCreate)
+        try:
+            result = analyze_api_surface(body.document, body.har)
+        except DiscoveryError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return repository.create_discovery_analysis(body.label, result)
+
+    @app.get("/api/v1/discovery/analyses")
+    async def list_discovery_analyses(_: dict = Depends(session_dependency), limit: int = 20):
+        if not 1 <= limit <= 50:
+            raise HTTPException(status_code=422, detail="limit must be between 1 and 50")
+        return repository.list_discovery_analyses(limit)
 
     @app.post("/api/v1/runs", status_code=202)
     async def create_run(body: RunCreate, _: dict = Depends(mutation_dependency)):
@@ -288,6 +365,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         artifact = repository.create_artifact(run_id, body.format, content)
         return {**artifact, "download_path": f"/api/v1/artifacts/{artifact['id']}"}
 
+    @app.post("/api/v1/runs/{run_id}/explanations", status_code=201)
+    async def create_explanation(
+        run_id: str,
+        body: ExplanationCreate,
+        _: dict = Depends(mutation_dependency),
+    ):
+        report = repository.get_report(run_id)
+        if not report:
+            raise HTTPException(status_code=409, detail="completed report required")
+        if body.mode == "deterministic":
+            result = deterministic_triage(report)
+        else:
+            if not configured.openai_api_key:
+                raise HTTPException(status_code=409, detail="AI remediation is not configured; use deterministic mode")
+            try:
+                result = await OpenAITriageClient(configured.openai_api_key, configured.ai_model).generate(report)
+            except (httpx.HTTPError, RuntimeError, ValidationError, json.JSONDecodeError) as exc:
+                raise HTTPException(status_code=502, detail="AI remediation provider failed safely") from exc
+        return repository.save_explanation(run_id, result)
+
     @app.get("/api/v1/artifacts/{artifact_id}")
     async def get_artifact(artifact_id: str, _: dict = Depends(session_dependency)):
         artifact = repository.get_artifact(artifact_id)
@@ -305,7 +402,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             status_code=exc.status_code,
             content={"error": {"code": f"HTTP_{exc.status_code}", "message": str(exc.detail),
-                               "request_id": request.headers.get("x-request-id", "local")}},
+                               "request_id": getattr(request.state, "request_id", "local")}},
         )
 
     if configured.web_dist.exists() and (configured.web_dist / "index.html").exists():
