@@ -2,6 +2,7 @@
 param(
     [string]$DataDir = '',
     [string]$TargetConfig = '',
+    [string]$BootstrapSecret = '',
     [switch]$LabFixtures
 )
 
@@ -31,12 +32,15 @@ if ($TargetConfig) {
     $serverArgs += @('--target-config', ('"' + $resolvedConfig + '"'))
 }
 $previousSecret = $env:BOUNDARYLAB_BOOTSTRAP_SECRET
-$generatedSecret = !$previousSecret
+$configuredSecret = if ($BootstrapSecret) { $BootstrapSecret } else { $previousSecret }
+$generatedSecret = !$configuredSecret
 if ($generatedSecret) {
     $randomBytes = New-Object byte[] 24
     $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
     try { $rng.GetBytes($randomBytes) } finally { $rng.Dispose() }
     $env:BOUNDARYLAB_BOOTSTRAP_SECRET = [Convert]::ToBase64String($randomBytes)
+} else {
+    $env:BOUNDARYLAB_BOOTSTRAP_SECRET = $configuredSecret
 }
 if ($env:BOUNDARYLAB_BOOTSTRAP_SECRET.Length -lt 16) { throw 'BOUNDARYLAB_BOOTSTRAP_SECRET must be at least 16 characters.' }
 $launchId = [guid]::NewGuid().ToString('N')
@@ -59,8 +63,7 @@ try {
                 Write-Output "Logs: $stderrPath"
                 return
             }
-        } catch [System.Net.WebException] { }
-        catch [Microsoft.PowerShell.Commands.HttpResponseException] { }
+        } catch { }
         Start-Sleep -Milliseconds 250
     } while ([DateTime]::UtcNow -lt $deadline)
     throw "Server did not become ready within 15 seconds. Inspect $stderrPath"

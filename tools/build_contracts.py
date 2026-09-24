@@ -189,8 +189,14 @@ schemas = {
     'ComparisonOutcome': obj({'run_id':STR,'target_alias':STR,'build_id':{'type':['string','null']},
                               'verdict':{'enum':VERDICTS},'kind':{'type':['string','null']}}),
     'ComparisonRow': obj({'case_id':STR,'name':STR,'outcomes':arr(ref('ComparisonOutcome'),minItems=2,maxItems=3)}),
+    'ComparisonChange': obj({'case_id':STR,'name':STR,'before':{'enum':VERDICTS},'after':{'enum':VERDICTS},
+                             'classification':{'enum':['fixed','regressed','preserved','unresolved']}}),
+    'ReleaseGate': obj({'decision':{'enum':['ready','blocked','needs_evidence']},
+                        'baseline_run_id':STR,'candidate_run_id':STR,'fixed':INT,'regressed':INT,
+                        'preserved':INT,'unresolved':INT,'reasons':arr(STR),'changes':arr(ref('ComparisonChange'))}),
     'Comparison': obj({'compatible':{'const':True},'policy_version':STR,
-                       'runs':arr(ref('Run'),minItems=2,maxItems=3),'rows':arr(ref('ComparisonRow'))}),
+                       'runs':arr(ref('Run'),minItems=2,maxItems=3),'rows':arr(ref('ComparisonRow')),
+                       'gate':ref('ReleaseGate')}),
     'ArtifactRequest': obj({'format':{'enum':['report_html','results_json']}}),
     'Artifact': obj({'id':STR,'run_id':STR,'format':{'enum':['report_html','results_json']},
                      'sha256':HASH,'created_at':STR,'download_path':STR}),
@@ -221,7 +227,7 @@ schemas = {
 schemas['PolicyDocument'].pop('$id', None)
 schemas['PolicyDocument'].pop('$schema', None)
 
-control = {'openapi':'3.1.0', 'info':{'title':'SentinelAPI BoundaryLab control API','version':'0.3.1'},
+control = {'openapi':'3.1.0', 'info':{'title':'SentinelAPI BoundaryLab control API','version':'0.3.2'},
            'servers':[{'url':'http://127.0.0.1:8080/api/v1','description':'Implemented local single-operator control plane'}],
            'security':[{'OperatorSession':[]}], 'paths':{},
            'components':{'securitySchemes':{'OperatorSession':{'type':'apiKey','in':'cookie','name':'boundarylab_session'}},'schemas':schemas}}

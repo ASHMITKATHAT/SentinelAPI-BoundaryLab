@@ -75,7 +75,7 @@ class RunWorker:
                 follow_redirects=False,
                 trust_env=False,
                 limits=limits,
-                headers={"User-Agent": "BoundaryLab/0.3.1 local-runner"},
+                headers={"User-Agent": "BoundaryLab/0.3.2 local-runner"},
             ) as client:
                 transport = ScopedTransport(
                     client,

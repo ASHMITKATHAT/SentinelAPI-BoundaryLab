@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "SentinelAPI BoundaryLab control API",
-    "version": "0.3.1"
+    "version": "0.3.2"
   },
   "servers": [
     {
@@ -2142,6 +2142,112 @@
           "outcomes"
         ]
       },
+      "ComparisonChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "before": {
+            "enum": [
+              "pass",
+              "violation",
+              "inconclusive",
+              "skipped"
+            ]
+          },
+          "after": {
+            "enum": [
+              "pass",
+              "violation",
+              "inconclusive",
+              "skipped"
+            ]
+          },
+          "classification": {
+            "enum": [
+              "fixed",
+              "regressed",
+              "preserved",
+              "unresolved"
+            ]
+          }
+        },
+        "required": [
+          "case_id",
+          "name",
+          "before",
+          "after",
+          "classification"
+        ]
+      },
+      "ReleaseGate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "ready",
+              "blocked",
+              "needs_evidence"
+            ]
+          },
+          "baseline_run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "candidate_run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fixed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "regressed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "preserved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unresolved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComparisonChange"
+            }
+          }
+        },
+        "required": [
+          "decision",
+          "baseline_run_id",
+          "candidate_run_id",
+          "fixed",
+          "regressed",
+          "preserved",
+          "unresolved",
+          "reasons",
+          "changes"
+        ]
+      },
       "Comparison": {
         "type": "object",
         "additionalProperties": false,
@@ -2166,13 +2272,17 @@
             "items": {
               "$ref": "#/components/schemas/ComparisonRow"
             }
+          },
+          "gate": {
+            "$ref": "#/components/schemas/ReleaseGate"
           }
         },
         "required": [
           "compatible",
           "policy_version",
           "runs",
-          "rows"
+          "rows",
+          "gate"
         ]
       },
       "ArtifactRequest": {

@@ -17,10 +17,12 @@ Push-Location apps/web
 npm ci
 npm run build
 Pop-Location
-& '.\.venv\Scripts\python.exe' -m boundarylab.devserver --with-lab-fixtures
+& '.\tools\start-local.ps1' -LabFixtures
 ```
 
 Open `http://127.0.0.1:8080` and enter the bootstrap secret printed by the server. Open **Verify**, run the disclosed lab matrix, then show the live evidence, policy, repair comparison and report handoff screens. Runtime state survives a browser refresh and service restart in `var/boundarylab.db`.
+
+`start-local.ps1` launches the workbench as a hidden background process, waits for `/api/healthz`, prints the one-time login secret and records the process/log paths under `var`. This avoids leaving a stale browser shell that later reports a vague network failure.
 
 The expected disclosed demo matrix is:
 
@@ -46,6 +48,8 @@ The owner-only build matters: it closes access too aggressively and breaks legit
 - Persisted deterministic remediation with an optional, explicitly invoked Structured Outputs model path. AI never controls execution or changes a verdict.
 - A loopback-only CI gate with configurable failure conditions and a GitHub Actions workflow that runs the fixed build through real sockets.
 - A fail-closed real-target mode for a reviewed OpenAPI-bound `GET`, multiple environment-backed identities, marker proof and identity-specific forbidden fields.
+- A deterministic release gate that compares an ordered baseline and candidate, then explains fixed controls, preserved product behavior, regressions and missing evidence.
+- Connection-aware UI errors, session-expiry recovery, request timeouts and a persistent local launcher with a health check.
 
 ## Run the hardened local container
 
@@ -84,7 +88,7 @@ We do not claim that multi-user tests, evidence, CI, authorization matrices or t
 | Business | [26 business model](docs/26_BUSINESS_MODEL.md), [24 roadmap](docs/24_FUTURE_ROADMAP.md), [00 executive summary](docs/00_EXECUTIVE_SUMMARY.md) |
 | Machine-readable handoff | [control API](contracts/control-api.openapi.json), [demo API](contracts/demo-api.openapi.json), [policy schema](contracts/policy.schema.json), [example policy](examples/invoice-policy.json), [fixture manifest](examples/fixture-manifest.json), [evaluation cases](examples/evaluation-cases.json), [design tokens](design/tokens.json) |
 | Implementation accountability | [30 requirement traceability](docs/30_REQUIREMENTS_TRACEABILITY.md), [artifact checks](docs/31_ARTIFACT_VALIDATION.md) |
-| Working system status | [32 implementation status](docs/32_IMPLEMENTATION_STATUS.md), [real-target runbook](docs/37_REAL_TARGET_RUNBOOK.md), [0.3.1 release evidence](docs/38_RELEASE_EVIDENCE_0.3.1.md), [service runbook](apps/service/README.md) |
+| Working system status | [32 implementation status](docs/32_IMPLEMENTATION_STATUS.md), [real-target runbook](docs/37_REAL_TARGET_RUNBOOK.md), [0.3.2 release evidence](docs/39_RELEASE_EVIDENCE_0.3.2.md), [service runbook](apps/service/README.md) |
 
 `docs/HACKATHON_SELECTION.md` and `docs/AMIHACKS_MARKET_AND_BUSINESS_ANALYSIS.md` preserve earlier research. Their earlier PS1 selection is superseded. This pack's team size, PS3 selection and scope are authoritative.
 

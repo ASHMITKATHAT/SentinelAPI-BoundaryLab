@@ -1,5 +1,5 @@
-import { Component, FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api } from './api'
+import { Component, FormEvent, Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { api, getApiStatus, subscribeApiStatus } from './api'
 import type { CandidateReview, Capabilities, CaseResult, Comparison, DiscoveryAnalysis, Evidence, Explanation, PolicySummary, Report, Run, SpecSummary, Target, Verdict } from './types'
 
 type View = 'runs' | 'discovery' | 'policy' | 'compare' | 'reports'
@@ -80,7 +80,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
 function SideNav({ view, setView, logout, activeRuns }: { view: View; setView: (view: View) => void; logout: () => void; activeRuns: number }) {
   const items: View[] = ['discovery', 'policy', 'runs', 'compare', 'reports']
   return <aside className="sidebar">
-    <div><div className="brand"><div className="mark">B</div><div><strong>BoundaryLab</strong><small>SentinelAPI · v0.3.1</small></div></div>
+    <div><div className="brand"><div className="mark">B</div><div><strong>BoundaryLab</strong><small>SentinelAPI · v0.3.2</small></div></div>
       <p className="nav-section">Release workflow</p>
       <nav aria-label="Product navigation">{items.map(id =>
         <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)} aria-current={view === id ? 'page' : undefined}>
@@ -92,14 +92,14 @@ function SideNav({ view, setView, logout, activeRuns }: { view: View; setView: (
   </aside>
 }
 
-function WorkspaceHeader({ view, activeRuns, policyLabel }: { view: View; activeRuns: number; policyLabel: string }) {
-  return <header className="topbar"><div className="breadcrumbs"><span className="stage-index">{viewMeta[view].index}</span><strong>{viewMeta[view].label}</strong></div><div className="topbar-actions"><span className="control-status"><i/>{activeRuns ? `${activeRuns} run${activeRuns > 1 ? 's' : ''} active` : 'Ready'}</span><span className="policy-pill"><code>{policyLabel}</code></span></div></header>
+function WorkspaceHeader({ view, activeRuns, policyLabel, connected }: { view: View; activeRuns: number; policyLabel: string; connected: boolean }) {
+  return <header className="topbar"><div className="breadcrumbs"><span className="stage-index">{viewMeta[view].index}</span><strong>{viewMeta[view].label}</strong></div><div className="topbar-actions"><span className={`control-status ${connected ? '' : 'offline'}`}><i/>{connected ? activeRuns ? `${activeRuns} run${activeRuns > 1 ? 's' : ''} active` : 'Ready' : 'Server offline'}</span><span className="policy-pill"><code>{policyLabel}</code></span></div></header>
 }
 
-function RunList({ runs, selected, select }: { runs: Run[]; selected?: string; select: (run: Run) => void }) {
+function RunList({ runs, selected, select }: { runs: Run[]; selected?: string; select: (run: Run) => Promise<void> }) {
   return <div className="run-list" aria-label="Recent runs">
     {runs.length === 0 && <div className="empty-small"><Icon name="pulse"/><strong>No verification runs yet</strong><span>Choose a ready target to create evidence.</span></div>}
-    {runs.map(run => <button key={run.id} className={selected === run.id ? 'run-row selected' : 'run-row'} onClick={() => select(run)}>
+    {runs.map(run => <button key={run.id} className={selected === run.id ? 'run-row selected' : 'run-row'} onClick={() => void select(run)}>
       <div className="run-row-main"><span className="run-glyph"><Icon name="pulse" size={15}/></span><span><strong>{run.target_alias.replace('demo-', '')}</strong><small>{new Date(run.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} · {run.id.slice(-6)}</small></span></div>
       <div className="run-row-end"><StatusBadge value={run.assessment || run.state}/><Icon name="chevron" size={14}/></div>
     </button>)}
@@ -199,14 +199,15 @@ function RunDetail({ run, cancel, capabilities }: { run: Run | null; cancel: (id
   </>
 }
 
-function RunsView({ targets, targetAlias, onTargetChange, runs, selectedRun, select, refresh, capabilities }: { targets: Target[]; targetAlias: string; onTargetChange: (alias: string) => void; runs: Run[]; selectedRun: Run | null; select: (run: Run) => void; refresh: () => Promise<void>; capabilities: Capabilities | null }) {
+function RunsView({ targets, targetAlias, onTargetChange, runs, selectedRun, select, refresh, capabilities }: { targets: Target[]; targetAlias: string; onTargetChange: (alias: string) => void; runs: Run[]; selectedRun: Run | null; select: (run: Run) => Promise<void>; refresh: () => Promise<void>; capabilities: Capabilities | null }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const selectedTarget = targets.find(item => item.alias === targetAlias) || null
   const labTargets = targets.filter(item => item.synthetic_fixture && item.ready)
-  async function start(alias: string) { setBusy(true); setError(''); try { const run = await api.startRun(alias); select(run); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not start run') } finally { setBusy(false) } }
-  async function matrix() { setBusy(true); setError(''); try { let first: Run | null = null; for (const item of labTargets) { const run = await api.startRun(item.alias); first ||= run } if (first) select(first); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not queue lab matrix') } finally { setBusy(false) } }
+  async function start(alias: string) { setBusy(true); setError(''); try { const run = await api.startRun(alias); await select(run); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not start run') } finally { setBusy(false) } }
+  async function matrix() { setBusy(true); setError(''); try { let first: Run | null = null; for (const item of labTargets) { const run = await api.startRun(item.alias); first ||= run } if (first) await select(first); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not queue lab matrix') } finally { setBusy(false) } }
   async function cancel(id: string) { try { await api.cancelRun(id); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Cancellation failed') } }
+  async function refreshRuns() { setError(''); try { await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not refresh runs') } }
   const completed = runs.filter(run => run.state === 'completed')
   const violations = completed.reduce((sum, run) => sum + (run.counts.violation || 0), 0)
   const realMode = selectedTarget?.mode === 'real_read_probe'
@@ -215,7 +216,7 @@ function RunsView({ targets, targetAlias, onTargetChange, runs, selectedRun, sel
     <section className="overview-strip" aria-label="Verification overview"><div><span>Completed runs</span><strong>{completed.length}</strong></div><div className={violations ? 'danger' : ''}><span>Recorded violations</span><strong>{violations}</strong></div><div><span>Required cases</span><strong>{selectedTarget?.case_count || 0} / run</strong></div><div><span>Evidence mode</span><strong>Redacted + hashed</strong></div></section>
     {targets.length === 0 ? <section className="card target-setup"><span className="setup-icon"><Icon name="lock" size={22}/></span><div><p className="eyebrow">Active testing disabled by default</p><h2>Connect an authorized staging target</h2><p>Start BoundaryLab with a reviewed target registry. Real mode accepts a fixed GET operation on numeric loopback only, so use a local service or an SSH-forwarded staging port. Tokens, resource IDs and proof markers come from environment references and are never accepted from the browser.</p><code>python -m boundarylab.devserver --target-config .\targets\registry.json</code></div></section> :
     <section className="launch card"><div className="launch-copy"><div><h2>Run a verification</h2><p>{realMode ? `Fixed read probe through ${selectedTarget?.origin}` : 'Choose a disclosed lab build. Requests remain inside the local fixture.'}</p><div className="assurance-row"><span><Icon name="lock" size={13}/>Allowlisted</span><span>{selectedTarget?.limits.requests || 0} requests max</span><span>1 at a time</span><span>No redirects</span></div></div></div><div className="launch-actions"><label htmlFor="target">Target to test</label><select id="target" value={targetAlias} onChange={e => onTargetChange(e.target.value)}>{targets.map(item => <option value={item.alias} key={item.alias} disabled={!item.ready}>{item.label}{item.ready ? '' : ' · missing environment'}</option>)}</select><button className="button primary" onClick={() => selectedTarget && start(selectedTarget.alias)} disabled={busy || !selectedTarget?.ready}>{busy ? 'Queueing…' : 'Run verification'}</button>{labTargets.length > 1 && <button className="button secondary" onClick={matrix} disabled={busy}>Run lab matrix</button>}</div>{selectedTarget && !selectedTarget.ready && <p className="form-error full" role="alert">Missing runtime environment references: {selectedTarget.missing_environment.join(', ')}</p>}{error && <p className="form-error full" role="alert">{error}</p>}</section>}
-    <div className="workspace-grid"><section className="card recent"><div className="section-head"><div><p className="eyebrow">Evidence index</p><h3>Recent runs</h3></div><button className="icon-button" onClick={refresh} aria-label="Refresh runs"><Icon name="refresh"/></button></div><RunList runs={runs} selected={selectedRun?.id} select={select}/></section><div className="detail-column"><RunDetail run={selectedRun} cancel={cancel} capabilities={capabilities}/></div></div>
+    <div className="workspace-grid"><section className="card recent"><div className="section-head"><div><p className="eyebrow">Evidence index</p><h3>Recent runs</h3></div><button className="icon-button" onClick={() => void refreshRuns()} aria-label="Refresh runs"><Icon name="refresh"/></button></div><RunList runs={runs} selected={selectedRun?.id} select={select}/></section><div className="detail-column"><RunDetail run={selectedRun} cancel={cancel} capabilities={capabilities}/></div></div>
   </>
 }
 
@@ -295,14 +296,26 @@ function PolicyView({ policy, spec }: { policy: PolicySummary | null; spec: Spec
 
 function CompareView({ runs }: { runs: Run[] }) {
   const completed = runs.filter(run => run.state === 'completed')
-  const [selected, setSelected] = useState<string[]>([])
+  const [baselineId, setBaselineId] = useState('')
+  const [candidateId, setCandidateId] = useState('')
   const [comparison, setComparison] = useState<Comparison | null>(null)
   const [error, setError] = useState('')
-  const toggle = (id: string) => setSelected(current => current.includes(id) ? current.filter(x => x !== id) : current.length < 3 ? [...current, id] : current)
-  async function compare() { setError(''); try { setComparison(await api.compare(selected)) } catch (e) { setError(e instanceof Error ? e.message : 'Comparison failed') } }
-  return <><header className="page-head"><div><p className="eyebrow">Fix validation</p><h1>Verify the behavior changed.</h1><p>Compare repeated evidence only when the reviewed policy and case suite match.</p></div></header>
-    <section className="card compare-picker"><div><h2>Select 2–3 runs</h2><p className="muted">Different policies or identity suites fail closed as non-comparable.</p></div><div className="run-checks">{completed.map(run => <label key={run.id} className={selected.includes(run.id) ? 'run-check selected' : 'run-check'}><input type="checkbox" checked={selected.includes(run.id)} onChange={() => toggle(run.id)}/><span><strong>{run.target_alias.replace('demo-','')}</strong><small>{run.id.slice(-6)} · {run.assessment}</small></span></label>)}</div><button className="button primary" disabled={selected.length < 2} onClick={compare}>Compare selected runs</button>{error && <p className="form-error" role="alert">{error}</p>}</section>
-    {comparison && <section className="card"><div className="section-head"><div><p className="eyebrow">Compatible policy · {comparison.policy_version}</p><h2>Evidence matrix</h2></div><span className="scope-chip">Same {comparison.rows.length}-case suite</span></div><div className="table-scroll"><table><thead><tr><th>Case</th><th>Promise</th>{comparison.runs.map(run => <th key={run.id}>{run.target_alias.replace('demo-','')}</th>)}</tr></thead><tbody>{comparison.rows.map(row => <tr key={row.case_id}><td><code>{row.case_id}</code></td><td>{row.name}</td>{row.outcomes.map(outcome => <td key={outcome.run_id}><StatusBadge value={outcome.verdict}/></td>)}</tr>)}</tbody></table></div></section>}
+  useEffect(() => {
+    if (completed.length < 2 || baselineId || candidateId) return
+    const vulnerable = completed.find(run => run.target_alias.includes('vulnerable'))
+    const fixed = completed.find(run => run.target_alias.includes('fixed'))
+    setBaselineId((vulnerable || completed.at(-1))?.id || '')
+    setCandidateId((fixed || completed[0])?.id || '')
+  }, [completed, baselineId, candidateId])
+  async function compare() {
+    setError(''); setComparison(null)
+    if (!baselineId || !candidateId || baselineId === candidateId) { setError('Choose two different completed runs.'); return }
+    try { setComparison(await api.compare([baselineId, candidateId])) } catch (e) { setError(e instanceof Error ? e.message : 'Comparison failed') }
+  }
+  const runLabel = (run: Run) => `${run.target_alias.replace('demo-','')} · ${run.build_id || run.id.slice(-6)} · ${run.assessment}`
+  return <><header className="page-head"><div><p className="eyebrow">Release decision</p><h1>Prove the fix is safe to ship.</h1><p>Choose the old behavior and the release candidate. BoundaryLab counts repaired controls, preserved product behavior and new regressions.</p></div></header>
+    <section className="card gate-picker"><div><p className="eyebrow">Step 1 · Baseline</p><h2>What are we replacing?</h2><select aria-label="Baseline run" value={baselineId} onChange={event => { setBaselineId(event.target.value); setComparison(null) }}><option value="">Choose baseline</option>{completed.map(run => <option key={run.id} value={run.id}>{runLabel(run)}</option>)}</select></div><span className="gate-arrow" aria-hidden="true">→</span><div><p className="eyebrow">Step 2 · Candidate</p><h2>What do we want to ship?</h2><select aria-label="Candidate run" value={candidateId} onChange={event => { setCandidateId(event.target.value); setComparison(null) }}><option value="">Choose candidate</option>{completed.map(run => <option key={run.id} value={run.id}>{runLabel(run)}</option>)}</select></div><button className="button primary" disabled={!baselineId || !candidateId || baselineId === candidateId} onClick={compare}>Evaluate release gate</button>{error && <p className="form-error full" role="alert">{error}</p>}</section>
+    {comparison && <><section className={`card release-gate gate-${comparison.gate.decision}`}><div className="gate-verdict"><span>{comparison.gate.decision === 'ready' ? '✓' : comparison.gate.decision === 'blocked' ? '!' : '?'}</span><div><p className="eyebrow">Deterministic release gate</p><h2>{comparison.gate.decision === 'ready' ? 'Ready for this tested scope' : comparison.gate.decision === 'blocked' ? 'Do not ship this candidate' : 'More evidence is required'}</h2><p>{comparison.gate.reasons.join(' · ')}</p></div><StatusBadge value={comparison.gate.decision}/></div><div className="gate-metrics"><div><b>{comparison.gate.fixed}</b><span>Fixed</span></div><div><b>{comparison.gate.preserved}</b><span>Passes preserved</span></div><div><b>{comparison.gate.regressed}</b><span>Regressed</span></div><div><b>{comparison.gate.unresolved}</b><span>Unresolved</span></div></div><p className="micro muted">Decision is limited to policy <code>{comparison.policy_version}</code> and the same {comparison.rows.length}-case suite.</p></section><section className="card"><div className="section-head"><div><p className="eyebrow">Case-by-case proof</p><h2>What changed?</h2></div><span className="scope-chip">Baseline → candidate</span></div><div className="table-scroll"><table><thead><tr><th>Case</th><th>Promise</th><th>Before</th><th>After</th><th>Change</th></tr></thead><tbody>{comparison.gate.changes.map(change => <tr key={change.case_id}><td><code>{change.case_id}</code></td><td>{change.name}</td><td><StatusBadge value={change.before}/></td><td><StatusBadge value={change.after}/></td><td><span className={`change change-${change.classification}`}>{change.classification}</span></td></tr>)}</tbody></table></div></section></>}
   </>
 }
 
@@ -328,6 +341,8 @@ function WorkbenchApp() {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
   const [workspaceLoading, setWorkspaceLoading] = useState(true)
   const [workspaceError, setWorkspaceError] = useState('')
+  const [workspaceRevision, setWorkspaceRevision] = useState(0)
+  const apiStatus = useSyncExternalStore(subscribeApiStatus, getApiStatus, getApiStatus)
 
   const loadRuns = useCallback(async () => {
     const list = await api.runs(); setRuns(list)
@@ -342,17 +357,23 @@ function WorkbenchApp() {
       setTargetAlias(initialAlias)
       setTargets(targetData); setRuns(runData); setPolicy(policyData); setSpec(specData); setCapabilities(capabilityData)
       if (runData[0]) setSelectedRun(await api.run(runData[0].id))
+      return true
     } catch (caught) {
       setWorkspaceError(caught instanceof Error ? caught.message : 'The local control API did not return a complete workspace.')
+      return false
     } finally { setWorkspaceLoading(false) }
   }, [])
   useEffect(() => { api.restoreSession().then(() => setAuth('ready')).catch(() => setAuth('login')) }, [])
+  useEffect(() => { if (apiStatus.sessionExpired) { setAuth('login'); setWorkspaceError('') } }, [apiStatus.sessionExpired])
   useEffect(() => { if (auth === 'ready') void loadWorkspace() }, [auth, loadWorkspace])
   useEffect(() => { window.scrollTo(0, 0) }, [view])
   const activeRuns = useMemo(() => runs.filter(run => ['queued','running'].includes(run.state)).length, [runs])
   const active = activeRuns > 0
   useEffect(() => { if (!active || auth !== 'ready') return; const timer=window.setInterval(() => loadRuns().catch(()=>undefined),1000); return()=>window.clearInterval(timer) }, [active, auth, loadRuns])
-  async function select(run: Run) { setSelectedRun(await api.run(run.id)) }
+  async function select(run: Run) {
+    try { setSelectedRun(await api.run(run.id)) }
+    catch (caught) { setWorkspaceError(caught instanceof Error ? caught.message : 'Could not load the selected run.') }
+  }
   async function changeTarget(alias: string) {
     setTargetAlias(alias); setWorkspaceError('')
     try {
@@ -365,19 +386,21 @@ function WorkbenchApp() {
     }
   }
   async function logout() { await api.logout().catch(()=>undefined); setAuth('login') }
+  async function reconnect() { if (await loadWorkspace()) setWorkspaceRevision(current => current + 1) }
   if (auth === 'loading') return <main className="boot"><div className="mark mark-large">B</div><div className="spinner light-spinner"/><p>Opening local workbench…</p></main>
   if (auth === 'login') return <Login onLogin={() => setAuth('ready')}/>
   return <div className="app-shell"><SideNav view={view} setView={setView} logout={logout} activeRuns={activeRuns}/><main className="content">
-    <WorkspaceHeader view={view} activeRuns={activeRuns} policyLabel={String(policy?.document.scenario || 'no-active-policy')}/>
+    <WorkspaceHeader view={view} activeRuns={activeRuns} policyLabel={String(policy?.document.scenario || 'no-active-policy')} connected={apiStatus.connection !== 'offline'}/>
+    {apiStatus.connection === 'offline' && <section className="connection-banner" role="alert"><Icon name="alert"/><div><strong>Local server disconnected</strong><span>Saved browser content may still be visible, but actions need the BoundaryLab service on port 8080.</span></div><button className="button secondary compact" onClick={() => void reconnect()}>Reconnect</button></section>}
     {workspaceLoading && <section className="workspace-loading" aria-live="polite"><div className="spinner"/><span>Synchronizing policy, targets and evidence…</span></section>}
     {!workspaceLoading && workspaceError && <section className="workspace-recovery card" role="alert"><span className="recovery-icon"><Icon name="alert" size={22}/></span><div><p className="eyebrow">Control API unavailable</p><h1>Workspace data could not be synchronized.</h1><p>{workspaceError}</p><p className="micro">Your session remains open and persisted evidence is unchanged.</p></div><button className="button primary" onClick={() => void loadWorkspace()}>Retry synchronization</button></section>}
-    {!workspaceLoading && !workspaceError && <>
+    {!workspaceLoading && !workspaceError && <Fragment key={workspaceRevision}>
       {view === 'runs' && <RunsView targets={targets} targetAlias={targetAlias} onTargetChange={alias => void changeTarget(alias)} runs={runs} selectedRun={selectedRun} select={select} refresh={loadRuns} capabilities={capabilities}/>}
       {view === 'discovery' && <DiscoveryView spec={spec}/>}
       {view === 'policy' && <PolicyView policy={policy} spec={spec}/>}
       {view === 'compare' && <CompareView runs={runs}/>}
       {view === 'reports' && <ReportsView runs={runs}/>}
-    </>}
+    </Fragment>}
   </main></div>
 }
 

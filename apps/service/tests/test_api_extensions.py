@@ -43,6 +43,36 @@ def completed_report() -> dict:
     }
 
 
+def release_report(alias: str, verdicts: list[str]) -> dict:
+    cases = []
+    for index, verdict in enumerate(verdicts, start=1):
+        cases.append({
+            "case_id": f"C{index:02}",
+            "name": f"Boundary promise {index}",
+            "verdict": verdict,
+            "expected": "declared behavior",
+            "observed": verdict,
+            "finding_kind": "security_violation" if verdict == "violation" else None,
+            "evidence_ids": [],
+            "reason_code": "TEST_VIOLATION" if verdict == "violation" else "",
+            "required": True,
+        })
+    counts = {name: verdicts.count(name) for name in ("pass", "violation", "inconclusive", "skipped")}
+    return {
+        "target_alias": alias,
+        "build_id": alias,
+        "policy_version": "release-gate-v1",
+        "assessment": "pass_in_scope" if counts["violation"] == counts["inconclusive"] == counts["skipped"] == 0 else "blocked",
+        "has_incomplete_cases": bool(counts["inconclusive"] or counts["skipped"]),
+        "counts": counts,
+        "request_count": len(verdicts),
+        "cleanup_status": "complete",
+        "execution_error": None,
+        "cases": cases,
+        "evidence": [],
+    }
+
+
 async def login(client: httpx.AsyncClient) -> str:
     response = await client.post(
         "/api/v1/session",
@@ -181,3 +211,43 @@ async def test_discovery_rejects_excessive_json_nesting_without_server_error(tmp
                 content=nested,
             )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_release_gate_explains_fixes_preserved_behavior_and_regressions(tmp_path):
+    app = create_app(Settings(
+        database_path=tmp_path / "boundarylab.db",
+        bootstrap_secret="correct-horse-battery-staple",
+        targets={},
+        allowed_origins=("http://testserver",),
+        web_dist=tmp_path / "missing",
+    ))
+    baseline = app.state.repository.create_run("baseline", "http://127.0.0.1:9011")
+    app.state.repository.complete_run(baseline["id"], release_report("baseline", ["violation", "pass"]))
+    fixed = app.state.repository.create_run("fixed", "http://127.0.0.1:9012")
+    app.state.repository.complete_run(fixed["id"], release_report("fixed", ["pass", "pass"]))
+    regressed = app.state.repository.create_run("regressed", "http://127.0.0.1:9013")
+    app.state.repository.complete_run(regressed["id"], release_report("regressed", ["pass", "violation"]))
+
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
+            csrf = await login(client)
+            headers = {"Origin": "http://testserver", "X-CSRF-Token": csrf}
+            ready = await client.post(
+                "/api/v1/comparisons",
+                headers=headers,
+                json={"run_ids": [baseline["id"], fixed["id"]]},
+            )
+            blocked = await client.post(
+                "/api/v1/comparisons",
+                headers=headers,
+                json={"run_ids": [fixed["id"], regressed["id"]]},
+            )
+
+    assert ready.status_code == 200, ready.text
+    assert ready.json()["gate"]["decision"] == "ready"
+    assert ready.json()["gate"]["fixed"] == 1
+    assert ready.json()["gate"]["preserved"] == 1
+    assert [item["classification"] for item in ready.json()["gate"]["changes"]] == ["fixed", "preserved"]
+    assert blocked.json()["gate"]["decision"] == "blocked"
+    assert blocked.json()["gate"]["regressed"] == 1

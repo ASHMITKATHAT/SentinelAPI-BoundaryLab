@@ -37,10 +37,10 @@ Push-Location apps/web
 npm ci
 npm run build
 Pop-Location
-& '.\.venv\Scripts\python.exe' -m boundarylab.devserver --with-lab-fixtures
+& '.\tools\start-local.ps1' -LabFixtures
 ```
 
-The server prints a random bootstrap secret. Open `http://127.0.0.1:8080`, authenticate, and queue the three-build proof. To use a stable secret and isolated demo database during rehearsal:
+The launcher starts a hidden background process, waits for the health endpoint and prints a random bootstrap secret. Open `http://127.0.0.1:8080`, authenticate, and queue the three-build proof. For foreground debugging or a stable rehearsal secret, run the module directly:
 
 ```powershell
 & '.\.venv\Scripts\python.exe' -m boundarylab.devserver `
@@ -50,6 +50,8 @@ The server prints a random bootstrap secret. Open `http://127.0.0.1:8080`, authe
 ```
 
 The demo binds only to `127.0.0.1`. Do not expose this development launcher directly to a public network.
+
+The browser distinguishes server disconnection, request timeout, expired session, validation failure and unexpected proxy responses. Mutation requests are never retried automatically because a lost response does not prove whether the server committed the action.
 
 ## Run against an authorized staging resource
 

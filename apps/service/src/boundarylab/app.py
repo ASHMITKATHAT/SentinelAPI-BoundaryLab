@@ -148,7 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="SentinelAPI BoundaryLab control API",
-        version="0.3.1",
+        version="0.3.2",
         description="Local single-operator authorization regression workbench",
         lifespan=lifespan,
         docs_url="/api/docs",
@@ -210,7 +210,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/healthz")
     async def health():
-        return {"status": "ok", "service": "boundarylab", "version": "0.3.1"}
+        return {"status": "ok", "service": "boundarylab", "version": "0.3.2"}
 
     @app.post("/api/v1/session", status_code=201)
     async def create_session(body: SessionCreate, request: Request, response: Response):
@@ -485,8 +485,69 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     for run in typed_runs
                 ],
             })
-        return {"compatible": True, "policy_version": next(iter(policies)),
-                "runs": [public_run(run) for run in typed_runs], "rows": rows}
+        baseline = typed_runs[0]
+        candidate = typed_runs[-1]
+        changes = []
+        fixed = regressed = preserved = unresolved = 0
+        for row in rows:
+            before = row["outcomes"][0]["verdict"]
+            after = row["outcomes"][-1]["verdict"]
+            if before == "pass" and after == "pass":
+                classification = "preserved"
+                preserved += 1
+            elif before != "pass" and after == "pass":
+                classification = "fixed"
+                fixed += 1
+            elif before == "pass" and after != "pass":
+                classification = "regressed"
+                regressed += 1
+            else:
+                classification = "unresolved"
+                unresolved += 1
+            changes.append({
+                "case_id": row["case_id"],
+                "name": row["name"],
+                "before": before,
+                "after": after,
+                "classification": classification,
+            })
+        candidate_counts = candidate["report"]["counts"]
+        if regressed or candidate_counts["violation"]:
+            decision = "blocked"
+        elif candidate_counts["inconclusive"] or candidate_counts["skipped"] or unresolved:
+            decision = "needs_evidence"
+        else:
+            decision = "ready"
+        reasons = []
+        if fixed:
+            reasons.append(f"{fixed} previously failing case{'s' if fixed != 1 else ''} now pass")
+        if preserved:
+            reasons.append(f"{preserved} existing pass{'es' if preserved != 1 else ''} preserved")
+        if regressed:
+            reasons.append(f"{regressed} previously passing case{'s' if regressed != 1 else ''} regressed")
+        if candidate_counts["violation"]:
+            reasons.append(f"candidate retains {candidate_counts['violation']} policy violation{'s' if candidate_counts['violation'] != 1 else ''}")
+        if candidate_counts["inconclusive"] or candidate_counts["skipped"]:
+            reasons.append("candidate still has incomplete required evidence")
+        if not reasons:
+            reasons.append("all required cases pass in both baseline and candidate")
+        return {
+            "compatible": True,
+            "policy_version": next(iter(policies)),
+            "runs": [public_run(run) for run in typed_runs],
+            "rows": rows,
+            "gate": {
+                "decision": decision,
+                "baseline_run_id": baseline["id"],
+                "candidate_run_id": candidate["id"],
+                "fixed": fixed,
+                "regressed": regressed,
+                "preserved": preserved,
+                "unresolved": unresolved,
+                "reasons": reasons,
+                "changes": changes,
+            },
+        }
 
     @app.post("/api/v1/runs/{run_id}/artifacts", status_code=201)
     async def create_artifact(run_id: str, body: ArtifactCreate, _: dict = Depends(mutation_dependency)):

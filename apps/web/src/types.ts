@@ -83,6 +83,23 @@ export interface Comparison {
   policy_version: string
   runs: Run[]
   rows: ComparisonRow[]
+  gate: {
+    decision: 'ready' | 'blocked' | 'needs_evidence'
+    baseline_run_id: string
+    candidate_run_id: string
+    fixed: number
+    regressed: number
+    preserved: number
+    unresolved: number
+    reasons: string[]
+    changes: Array<{
+      case_id: string
+      name: string
+      before: Verdict
+      after: Verdict
+      classification: 'fixed' | 'regressed' | 'preserved' | 'unresolved'
+    }>
+  }
 }
 
 export interface SpecSummary {
