@@ -1,0 +1,382 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://boundarylab.example/schemas/policy-v1.json",
+  "title": "BoundaryLab supported invoice policy v1",
+  "description": "Specification artifact. This intentionally supports one reviewed scenario, not an arbitrary executable DSL.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "scenario": {
+      "const": "invoice-sharing-v1"
+    },
+    "fixture_semantics_version": {
+      "const": "invoice-fixtures-v1"
+    },
+    "identities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "alice": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "relation": {
+              "enum": [
+                "owner",
+                "collaborator",
+                "foreign_tenant"
+              ]
+            },
+            "tenant": {
+              "enum": [
+                "A",
+                "B"
+              ]
+            },
+            "credential_ref": {
+              "type": "string",
+              "pattern": "^lab/[a-z]+$"
+            }
+          },
+          "required": [
+            "relation",
+            "tenant",
+            "credential_ref"
+          ]
+        },
+        "bob": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "relation": {
+              "enum": [
+                "owner",
+                "collaborator",
+                "foreign_tenant"
+              ]
+            },
+            "tenant": {
+              "enum": [
+                "A",
+                "B"
+              ]
+            },
+            "credential_ref": {
+              "type": "string",
+              "pattern": "^lab/[a-z]+$"
+            }
+          },
+          "required": [
+            "relation",
+            "tenant",
+            "credential_ref"
+          ]
+        },
+        "mallory": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "relation": {
+              "enum": [
+                "owner",
+                "collaborator",
+                "foreign_tenant"
+              ]
+            },
+            "tenant": {
+              "enum": [
+                "A",
+                "B"
+              ]
+            },
+            "credential_ref": {
+              "type": "string",
+              "pattern": "^lab/[a-z]+$"
+            }
+          },
+          "required": [
+            "relation",
+            "tenant",
+            "credential_ref"
+          ]
+        }
+      },
+      "required": [
+        "alice",
+        "bob",
+        "mallory"
+      ]
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "private_invoice": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "owner": {
+              "const": "alice"
+            },
+            "initially_shared_with": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "bob"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "owner",
+            "initially_shared_with"
+          ]
+        },
+        "shared_invoice": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "owner": {
+              "const": "alice"
+            },
+            "initially_shared_with": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "bob"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "owner",
+            "initially_shared_with"
+          ]
+        }
+      },
+      "required": [
+        "private_invoice",
+        "shared_invoice"
+      ]
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "operation_id": {
+            "enum": [
+              "getInvoicePreview",
+              "getInvoice",
+              "queueExport",
+              "getExportContent"
+            ]
+          },
+          "resource": {
+            "enum": [
+              "private_invoice",
+              "shared_invoice"
+            ]
+          },
+          "allowed_relations": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "owner",
+                "active_collaborator"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "id",
+          "operation_id",
+          "resource",
+          "allowed_relations"
+        ]
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "restricted_fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operation_id": {
+            "const": "getInvoice"
+          },
+          "pointer": {
+            "const": "/internal_bank_ref"
+          },
+          "allowed_relations": {
+            "const": [
+              "owner"
+            ]
+          }
+        },
+        "required": [
+          "operation_id",
+          "pointer",
+          "allowed_relations"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "revocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "const": "revokeShare"
+        },
+        "probe_operation_id": {
+          "const": "getExportContent"
+        },
+        "grace_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "probe_margin_ms": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 1000
+        },
+        "timing_anchor": {
+          "const": "successful_revoke_ack_monotonic"
+        },
+        "applies_to": {
+          "const": "fresh_bearer_requests"
+        },
+        "deny_statuses": {
+          "const": [
+            403,
+            404
+          ]
+        }
+      },
+      "required": [
+        "operation_id",
+        "probe_operation_id",
+        "grace_ms",
+        "probe_margin_ms",
+        "timing_anchor",
+        "applies_to",
+        "deny_statuses"
+      ]
+    },
+    "marker_pointer": {
+      "const": "/content_marker"
+    },
+    "required_cases": {
+      "const": [
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C06",
+        "C07",
+        "C08",
+        "C09",
+        "C10",
+        "C11",
+        "C12"
+      ]
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_requests": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "main_request_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 180
+        },
+        "cleanup_request_reserve": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "requests_per_second": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "max_in_flight": {
+          "const": 1
+        },
+        "request_deadline_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5000
+        },
+        "run_deadline_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120000
+        },
+        "cleanup_time_reserve_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "response_body_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        }
+      },
+      "required": [
+        "max_requests",
+        "main_request_limit",
+        "cleanup_request_reserve",
+        "requests_per_second",
+        "max_in_flight",
+        "request_deadline_ms",
+        "run_deadline_ms",
+        "cleanup_time_reserve_ms",
+        "response_body_bytes"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "name",
+    "scenario",
+    "fixture_semantics_version",
+    "identities",
+    "resources",
+    "rules",
+    "restricted_fields",
+    "revocation",
+    "marker_pointer",
+    "required_cases",
+    "limits"
+  ]
+}

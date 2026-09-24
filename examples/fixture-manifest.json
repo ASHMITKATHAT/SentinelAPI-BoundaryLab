@@ -1,0 +1,56 @@
+{
+  "status": "synthetic_expected_fixture_not_executed",
+  "semantics_version": "invoice-fixtures-v1",
+  "namespace_strategy": "new opaque namespace per run; cleanup only owns that namespace",
+  "identity_bindings": {
+    "alice": {
+      "tenant": "A",
+      "owns": [
+        "private_invoice",
+        "shared_invoice"
+      ]
+    },
+    "bob": {
+      "tenant": "A",
+      "owns": []
+    },
+    "mallory": {
+      "tenant": "B",
+      "owns": []
+    }
+  },
+  "variants": {
+    "vulnerable": {
+      "preview_requires_only_auth": true,
+      "leaks_owner_field_to_collaborator": true,
+      "export_checks_creator_without_current_sharing": true,
+      "owner_only": false
+    },
+    "owner-only": {
+      "preview_requires_only_auth": false,
+      "leaks_owner_field_to_collaborator": false,
+      "export_checks_creator_without_current_sharing": false,
+      "owner_only": true
+    },
+    "fixed": {
+      "preview_requires_only_auth": false,
+      "leaks_owner_field_to_collaborator": false,
+      "export_checks_creator_without_current_sharing": false,
+      "owner_only": false
+    }
+  },
+  "independence_rule": "Scanner assertions must not read variant flags or use the expected-results manifest as observed evidence.",
+  "lab_admin": {
+    "create": "POST /__lab/fixtures",
+    "cleanup": "DELETE /__lab/fixtures/{namespace}",
+    "credential_ref": "lab/factory",
+    "not_part_of_scanned_openapi": true
+  },
+  "c12_setup": "Independent Alice-created export; C11 independent grant/revoke; C08 attempted independently of C05.",
+  "timing": {
+    "max_export_ready_ms": 20000,
+    "max_polls": 10,
+    "grace_ms": 2000,
+    "probe_margin_ms": 200
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "name": "Invoice sharing and export revocation",
+  "scenario": "invoice-sharing-v1",
+  "fixture_semantics_version": "invoice-fixtures-v1",
+  "identities": {
+    "alice": {
+      "relation": "owner",
+      "tenant": "A",
+      "credential_ref": "lab/alice"
+    },
+    "bob": {
+      "relation": "collaborator",
+      "tenant": "A",
+      "credential_ref": "lab/bob"
+    },
+    "mallory": {
+      "relation": "foreign_tenant",
+      "tenant": "B",
+      "credential_ref": "lab/mallory"
+    }
+  },
+  "resources": {
+    "private_invoice": {
+      "owner": "alice",
+      "initially_shared_with": []
+    },
+    "shared_invoice": {
+      "owner": "alice",
+      "initially_shared_with": []
+    }
+  },
+  "rules": [
+    {
+      "id": "private-preview",
+      "operation_id": "getInvoicePreview",
+      "resource": "private_invoice",
+      "allowed_relations": [
+        "owner"
+      ]
+    },
+    {
+      "id": "shared-detail",
+      "operation_id": "getInvoice",
+      "resource": "shared_invoice",
+      "allowed_relations": [
+        "owner",
+        "active_collaborator"
+      ]
+    },
+    {
+      "id": "queue-while-shared",
+      "operation_id": "queueExport",
+      "resource": "shared_invoice",
+      "allowed_relations": [
+        "owner",
+        "active_collaborator"
+      ]
+    },
+    {
+      "id": "read-export-current-access",
+      "operation_id": "getExportContent",
+      "resource": "shared_invoice",
+      "allowed_relations": [
+        "owner",
+        "active_collaborator"
+      ]
+    }
+  ],
+  "restricted_fields": [
+    {
+      "operation_id": "getInvoice",
+      "pointer": "/internal_bank_ref",
+      "allowed_relations": [
+        "owner"
+      ]
+    }
+  ],
+  "revocation": {
+    "operation_id": "revokeShare",
+    "probe_operation_id": "getExportContent",
+    "grace_ms": 2000,
+    "probe_margin_ms": 200,
+    "timing_anchor": "successful_revoke_ack_monotonic",
+    "applies_to": "fresh_bearer_requests",
+    "deny_statuses": [
+      403,
+      404
+    ]
+  },
+  "marker_pointer": "/content_marker",
+  "required_cases": [
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "C05",
+    "C06",
+    "C07",
+    "C08",
+    "C09",
+    "C10",
+    "C11",
+    "C12"
+  ],
+  "limits": {
+    "max_requests": 200,
+    "main_request_limit": 180,
+    "cleanup_request_reserve": 20,
+    "requests_per_second": 2,
+    "max_in_flight": 1,
+    "request_deadline_ms": 5000,
+    "run_deadline_ms": 120000,
+    "cleanup_time_reserve_ms": 10000,
+    "response_body_bytes": 65536
+  }
+}

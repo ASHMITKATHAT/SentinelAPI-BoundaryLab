@@ -1,0 +1,284 @@
+{
+  "status": "expected_results_only_not_test_execution",
+  "suite_version": "boundarylab-suite-v1",
+  "core_cases": [
+    {
+      "id": "C01",
+      "name": "Alice reads private preview",
+      "operation_id": "getInvoicePreview",
+      "identity": "alice",
+      "required": true,
+      "depends_on": [],
+      "expected": {
+        "vulnerable": "pass",
+        "owner-only": "pass",
+        "fixed": "pass"
+      }
+    },
+    {
+      "id": "C02",
+      "name": "Bob denied private preview",
+      "operation_id": "getInvoicePreview",
+      "identity": "bob",
+      "required": true,
+      "depends_on": [
+        "C01"
+      ],
+      "expected": {
+        "vulnerable": "violation",
+        "owner-only": "pass",
+        "fixed": "pass"
+      }
+    },
+    {
+      "id": "C03",
+      "name": "Mallory denied private preview",
+      "operation_id": "getInvoicePreview",
+      "identity": "mallory",
+      "required": true,
+      "depends_on": [
+        "C01"
+      ],
+      "expected": {
+        "vulnerable": "violation",
+        "owner-only": "pass",
+        "fixed": "pass"
+      }
+    },
+    {
+      "id": "C04",
+      "name": "Anonymous denied private preview",
+      "operation_id": "getInvoicePreview",
+      "identity": "anonymous",
+      "required": true,
+      "depends_on": [
+        "C01"
+      ],
+      "expected": {
+        "vulnerable": "pass",
+        "owner-only": "pass",
+        "fixed": "pass"
+      }
+    },
+    {
+      "id": "C05",
+      "name": "Bob reads active shared detail",
+      "operation_id": "getInvoice",
+      "identity": "bob",
+      "required": true,
+      "depends_on": [],
+      "expected": {
+        "vulnerable": "pass",
+        "owner-only": "violation",
+        "fixed": "pass"
+      }
+    },
+    {
+      "id": "C06",
+      "name": "Owner-only property absent for Bob",
+      "operation_id": "getInvoice",
+      "identity": "bob",
+      "required": true,
+      "depends_on": [
+        "C05"
+      ],
+      "expected": {
+        "vulnerable": "violation",
+        "owner-only": "inconclusive",
+        "fixed": "pass"
+      }
+    },
+    {
+      "id": "C07",
+      "name": "Owner retains owner-only property",
+      "operation_id": "getInvoice",
+      "identity": "alice",
+      "required": true,
+      "depends_on": [],
+      "expected": {
+        "vulnerable": "pass",
+        "owner-only": "pass",
+        "fixed": "pass"
+      }
+    },
+    {
+      "id": "C08",
+      "name": "Bob queues export while shared",
+      "operation_id": "queueExport",
+      "identity": "bob",
+      "required": true,
+      "depends_on": [],
+      "expected": {
+        "vulnerable": "pass",
+        "owner-only": "violation",
+        "fixed": "pass"
+      }
+    },
+    {
+      "id": "C09",
+      "name": "Bob retrieves ready export before revoke",
+      "operation_id": "getExportContent",
+      "identity": "bob",
+      "required": true,
+      "depends_on": [
+        "C08"
+      ],
+      "expected": {
+        "vulnerable": "pass",
+        "owner-only": "inconclusive",
+        "fixed": "pass"
+      }
+    },
+    {
+      "id": "C10",
+      "name": "Bob denied export after revocation deadline",
+      "operation_id": "getExportContent",
+      "identity": "bob",
+      "required": true,
+      "depends_on": [
+        "C08",
+        "C09"
+      ],
+      "expected": {
+        "vulnerable": "violation",
+        "owner-only": "inconclusive",
+        "fixed": "pass"
+      }
+    },
+    {
+      "id": "C11",
+      "name": "Bob denied detail after independent grant/revoke",
+      "operation_id": "getInvoice",
+      "identity": "bob",
+      "required": true,
+      "depends_on": [],
+      "expected": {
+        "vulnerable": "pass",
+        "owner-only": "pass",
+        "fixed": "pass"
+      }
+    },
+    {
+      "id": "C12",
+      "name": "Alice retrieves independent owner-created export",
+      "operation_id": "getExportContent",
+      "identity": "alice",
+      "required": true,
+      "depends_on": [],
+      "expected": {
+        "vulnerable": "pass",
+        "owner-only": "pass",
+        "fixed": "pass"
+      }
+    }
+  ],
+  "failure_cases": [
+    {
+      "id": "F01",
+      "fault": "expired_token",
+      "expected_behavior": "Required dependent cases inconclusive; never a scoped pass"
+    },
+    {
+      "id": "F02",
+      "fault": "wrong_subject",
+      "expected_behavior": "Preflight identity mismatch; no dependent probes"
+    },
+    {
+      "id": "F03",
+      "fault": "grant_fails",
+      "expected_behavior": "Shared-policy prerequisites incomplete"
+    },
+    {
+      "id": "F04",
+      "fault": "revoke_fails",
+      "expected_behavior": "No post-revocation finding; temporal case inconclusive"
+    },
+    {
+      "id": "F05",
+      "fault": "export_timeout",
+      "expected_behavior": "Bounded polling; dependent case inconclusive"
+    },
+    {
+      "id": "F06",
+      "fault": "unexpected_200_body",
+      "expected_behavior": "Without protected marker, unexpected representation is inconclusive"
+    },
+    {
+      "id": "F07",
+      "fault": "denial_body_leaks_marker",
+      "expected_behavior": "403/404 containing protected marker is violation with valid controls"
+    },
+    {
+      "id": "F08",
+      "fault": "build_changes",
+      "expected_behavior": "Run incomplete and not valid for fixed comparison"
+    },
+    {
+      "id": "F09",
+      "fault": "policy_hash_mismatch",
+      "expected_behavior": "Comparison returns 409 NON_COMPARABLE_RUNS"
+    },
+    {
+      "id": "F10",
+      "fault": "worker_crash_after_mutation",
+      "expected_behavior": "Run interrupted; mutation is not automatically replayed"
+    },
+    {
+      "id": "F11",
+      "fault": "cancel",
+      "expected_behavior": "No new test traffic; bounded permitted cleanup; cancelled run"
+    },
+    {
+      "id": "F12",
+      "fault": "cleanup_fails",
+      "expected_behavior": "Namespace retained with cleanup pending; no broad deletion"
+    },
+    {
+      "id": "F13",
+      "fault": "oversized_body",
+      "expected_behavior": "Read bounded to 65536 decoded bytes; dependent case inconclusive"
+    },
+    {
+      "id": "F14",
+      "fault": "redirect_outside_scope",
+      "expected_behavior": "Redirect not followed; destination receives zero requests"
+    },
+    {
+      "id": "F15",
+      "fault": "external_ref",
+      "expected_behavior": "Import rejects without fetching external reference"
+    },
+    {
+      "id": "F16",
+      "fault": "dns_rebinding",
+      "expected_behavior": "Connected address must match approved pinned resolution; unauthorized destination receives zero requests"
+    },
+    {
+      "id": "F17",
+      "fault": "secret_sentinel",
+      "expected_behavior": "Zero occurrences of sentinel secret in persisted DB, logs and reports"
+    },
+    {
+      "id": "F18",
+      "fault": "cross_origin_control_request",
+      "expected_behavior": "Rejected before state mutation"
+    }
+  ],
+  "expected_core_counts": {
+    "vulnerable": {
+      "pass": 8,
+      "violation": 4,
+      "inconclusive": 0
+    },
+    "owner-only": {
+      "pass": 7,
+      "violation": 2,
+      "inconclusive": 3
+    },
+    "fixed": {
+      "pass": 12,
+      "violation": 0,
+      "inconclusive": 0
+    }
+  }
+}
