@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+import httpx
+
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
