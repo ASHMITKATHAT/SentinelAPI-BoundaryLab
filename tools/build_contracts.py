@@ -197,6 +197,17 @@ schemas = {
     'DiscoveryAnalysis': {'type':'object','additionalProperties':True,
                           'required':['id','label','created_at','analysis_version','spec','summary','operations',
                                       'invariant_candidates','traffic_diff','safety','limitations']},
+    'CandidateReviewRequest': obj({
+        'candidate_id': {**STR,'maxLength':200},
+        'decision': {'enum':['approved','rejected']},
+        'rationale': {**STR,'minLength':8,'maxLength':500},
+    }),
+    'CandidateReview': obj({
+        'id':STR,'analysis_id':STR,'candidate_id':STR,
+        'decision':{'enum':['approved','rejected']},'rationale':STR,'reviewer':STR,
+        'candidate_sha256':HASH,'created_at':STR,
+        'candidate':{'type':'object','additionalProperties':True},
+    }),
     'ExplanationRequest': obj({'mode':{'enum':['deterministic','ai']}}),
     'Explanation': {'type':'object','additionalProperties':True,
                     'required':['id','run_id','mode','provider_status','summary','risk','root_causes',
@@ -205,7 +216,7 @@ schemas = {
 schemas['PolicyDocument'].pop('$id', None)
 schemas['PolicyDocument'].pop('$schema', None)
 
-control = {'openapi':'3.1.0', 'info':{'title':'SentinelAPI BoundaryLab control API','version':'0.2.0'},
+control = {'openapi':'3.1.0', 'info':{'title':'SentinelAPI BoundaryLab control API','version':'0.3.0'},
            'servers':[{'url':'http://127.0.0.1:8080/api/v1','description':'Implemented local single-operator control plane'}],
            'security':[{'OperatorSession':[]}], 'paths':{},
            'components':{'securitySchemes':{'OperatorSession':{'type':'apiKey','in':'cookie','name':'boundarylab_session'}},'schemas':schemas}}
@@ -238,6 +249,11 @@ add_control('/spec','get','getSpecification','Bundled target contract and operat
 add_control('/discovery/analyses','post','createDiscoveryAnalysis','Passively analyze OpenAPI plus optional HAR; 2 MB cap; no external refs',ref('DiscoveryAnalysis'),ref('DiscoveryRequest'),'201')
 op=add_control('/discovery/analyses','get','listDiscoveryAnalyses','List persisted passive analyses',arr(ref('DiscoveryAnalysis')))
 op['parameters']=[{'name':'limit','in':'query','schema':{'type':'integer','minimum':1,'maximum':50,'default':20}}]
+add_control('/discovery/analyses/{analysis_id}/reviews','post','createCandidateReview',
+            'Append an approve/reject decision with rationale and immutable candidate hash',
+            ref('CandidateReview'),ref('CandidateReviewRequest'),'201')
+add_control('/discovery/analyses/{analysis_id}/reviews','get','listCandidateReviews',
+            'Read the append-only candidate decision ledger',arr(ref('CandidateReview')))
 add_control('/runs','post','createRun','Queue a trusted target adapter and approved scenario',ref('Run'),ref('RunCreate'),'202')
 op=add_control('/runs','get','listRuns','Recent runs',arr(ref('Run')))
 op['parameters']=[{'name':'limit','in':'query','schema':{'type':'integer','minimum':1,'maximum':100,'default':20}}]

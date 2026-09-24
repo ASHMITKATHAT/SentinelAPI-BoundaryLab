@@ -5,7 +5,7 @@ Length: 5 minutes, plus questions. Use only the team's local authorized fixture.
 | Time | Screen/action | Spoken point | Visible proof |
 |---|---|---|---|
 | 0:00–0:35 | Discovery: load disclosed traffic and analyze | “The spec says ten operations; traffic also reveals an undocumented internal route.” | Passive shadow-route diff and review-required ownership candidates |
-| 0:35–1:00 | Show policy | “Alice removed Bob. Can he still download an export he queued earlier?” | Explicit 2-second revocation promise and supported operations |
+| 0:35–1:00 | Approve one candidate with rationale, then show policy | “Automation proposes the boundary; a human owns the policy decision.” | Append-only review record, candidate hash and explicit 2-second revocation promise |
 | 1:00–1:55 | Start vulnerable run | “Watch the permission lifecycle, with live requests under two identities.” | Actual grant/queue/ready/revoke/probe requests; Bob gets marker after deadline |
 | 1:55–2:30 | Open evidence and remediation | “The verdict is deterministic; remediation explains the missing guard.” | Sanitized evidence, reason code and framework-neutral guard outline |
 | 2:30–3:25 | Compare owner-only implementation | “Blocking all collaborators hides the leak but breaks the product.” | Failed active-sharing controls and incomplete temporal case |

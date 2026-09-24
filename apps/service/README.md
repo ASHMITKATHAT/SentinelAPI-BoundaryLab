@@ -54,6 +54,12 @@ The demo binds only to `127.0.0.1`. Do not expose this development launcher dire
 
 Use the **Discovery** screen to import OpenAPI 3.x JSON and an optional HAR export. The analyzer stores derived operation metadata only. HAR headers, cookies, query strings and bodies are discarded. It reports observed method/path templates absent from the contract and proposes review-required ownership invariants for resource-ID operations. It sends no active traffic and does not describe an unobserved route as a zombie API.
 
+Each candidate can be approved or rejected only with a written rationale. BoundaryLab appends the decision to a durable ledger together with the reviewer, timestamp and SHA-256 of the exact candidate snapshot. A later decision adds another record instead of rewriting history. Approval is governance evidence; active execution still requires a reviewed target adapter.
+
+## Container profile
+
+From the repository root, set a 16-character-or-longer secret and run `docker compose up --build`. The image compiles the React client in a Node build stage, installs the Python service in a slim runtime stage and runs as an unprivileged user. Compose publishes only `127.0.0.1:8080`; fixture ports remain internal to the process. The root filesystem is read-only, `/tmp` is a restricted tmpfs and `/data` is the only durable volume.
+
 ## Remediation modes
 
 Every completed run supports deterministic root-cause triage. To enable the optional model path, set `OPENAI_API_KEY`; optionally set `BOUNDARYLAB_AI_MODEL`. The model receives only failed-case summaries, uses a strict JSON schema, has no tools, cannot start runs and cannot affect verdicts. If the provider is unavailable or its response fails validation, the API fails closed and deterministic triage still works.

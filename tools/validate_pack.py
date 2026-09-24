@@ -90,6 +90,32 @@ label = "DESIGN PROTOTYPE · SYNTHETIC EVIDENCE · NO SCANNER CONNECTED"
 if label not in prototype:
     errors.append("prototype: mandatory synthetic-design label missing")
 
+review_path = control.get("paths", {}).get("/discovery/analyses/{analysis_id}/reviews", {})
+if not {"get", "post"}.issubset(review_path):
+    errors.append("control contract: candidate review ledger routes are missing")
+
+dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+exposed_ports = re.findall(r"(?mi)^EXPOSE\s+(.+)$", dockerfile)
+if exposed_ports != ["8080"]:
+    errors.append(f"container: expected only EXPOSE 8080, found {exposed_ports}")
+for required in ["USER boundarylab", "HEALTHCHECK", '"--host", "0.0.0.0"']:
+    if required not in dockerfile:
+        errors.append(f"container: missing Dockerfile control: {required}")
+for required in [
+    '"127.0.0.1:8080:8080"',
+    "BOUNDARYLAB_BOOTSTRAP_SECRET:",
+    "read_only: true",
+    "no-new-privileges:true",
+    "cap_drop:",
+    "- ALL",
+    "boundarylab-data:/data",
+]:
+    if required not in compose:
+        errors.append(f"container: missing Compose control: {required}")
+if re.search(r"(?m)^\s*-\s*['\"]?(?:9011|9012|9013):", compose):
+    errors.append("container: synthetic fixture port must not be published")
+
 if errors:
     print("PACK VALIDATION FAILED")
     for error in errors:
@@ -101,3 +127,4 @@ print("JSON artifacts: 7")
 print("OpenAPI documents: 2")
 print("Evaluation cases: 30 (12 core + 18 failure)")
 print(f"Markdown files: {len(markdown_files)}")
+print("Container profile: policy controls present (image build not performed)")

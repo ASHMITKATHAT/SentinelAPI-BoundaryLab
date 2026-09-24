@@ -91,7 +91,7 @@ export interface SpecSummary {
 }
 
 export interface Capabilities {
-  discovery: { openapi: boolean; har: boolean; active_replay: string }
+  discovery: { openapi: boolean; har: boolean; active_replay: string; candidate_reviews: string }
   remediation: { deterministic: boolean; ai_configured: boolean; model: string | null; data_sent: string }
 }
 
@@ -129,6 +129,18 @@ export interface DiscoveryAnalysis {
   }
   safety: Record<string, boolean>
   limitations: string[]
+}
+
+export interface CandidateReview {
+  id: string
+  analysis_id: string
+  candidate_id: string
+  decision: 'approved' | 'rejected'
+  rationale: string
+  reviewer: string
+  candidate_sha256: string
+  created_at: string
+  candidate: DiscoveryAnalysis['invariant_candidates'][number]
 }
 
 export interface Explanation {

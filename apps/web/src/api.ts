@@ -1,4 +1,4 @@
-import type { Capabilities, Comparison, DiscoveryAnalysis, Explanation, Run, SpecSummary, Target } from './types'
+import type { CandidateReview, Capabilities, Comparison, DiscoveryAnalysis, Explanation, Run, SpecSummary, Target } from './types'
 
 let csrfToken = sessionStorage.getItem('boundarylab-csrf') || ''
 
@@ -42,6 +42,12 @@ export const api = {
       method: 'POST', body: JSON.stringify({ label, document, har }),
     }),
   analyses: () => request<DiscoveryAnalysis[]>('/api/v1/discovery/analyses?limit=20'),
+  candidateReviews: (analysisId: string) =>
+    request<CandidateReview[]>(`/api/v1/discovery/analyses/${analysisId}/reviews`),
+  reviewCandidate: (analysisId: string, candidateId: string, decision: 'approved' | 'rejected', rationale: string) =>
+    request<CandidateReview>(`/api/v1/discovery/analyses/${analysisId}/reviews`, {
+      method: 'POST', body: JSON.stringify({ candidate_id: candidateId, decision, rationale }),
+    }),
   runs: () => request<Run[]>('/api/v1/runs?limit=50'),
   run: (id: string) => request<Run>(`/api/v1/runs/${id}`),
   startRun: (targetAlias: string) => request<Run>('/api/v1/runs', { method: 'POST', body: JSON.stringify({ target_alias: targetAlias }) }),

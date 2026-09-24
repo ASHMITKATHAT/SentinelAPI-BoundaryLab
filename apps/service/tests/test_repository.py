@@ -57,3 +57,32 @@ def test_discovery_and_explanation_records_survive_repository_restart(tmp_path):
     with restarted.connection() as connection:
         row = connection.execute("SELECT result_json FROM explanations WHERE id=?", (explanation["id"],)).fetchone()
     assert "reviewed" in row["result_json"]
+
+
+def test_candidate_review_is_append_only_and_preserves_candidate_snapshot(tmp_path):
+    database = tmp_path / "boundarylab.db"
+    repository = Repository(database)
+    candidate = {
+        "id": "ownership-123",
+        "operation_id": "getOrder",
+        "method": "GET",
+        "path": "/orders/{order_id}",
+    }
+    analysis = repository.create_discovery_analysis("orders", {
+        "spec": {"sha256": "a" * 64},
+        "summary": {"documented_operations": 1},
+        "invariant_candidates": [candidate],
+    })
+    first = repository.create_candidate_review(
+        analysis["id"], candidate, "approved", "Owner scoping is required for this resource."
+    )
+    second = repository.create_candidate_review(
+        analysis["id"], candidate, "rejected", "Replaced after confirming this endpoint is public."
+    )
+
+    restarted = Repository(database)
+    reviews = restarted.list_candidate_reviews(analysis["id"])
+    assert [review["id"] for review in reviews] == [first["id"], second["id"]]
+    assert reviews[0]["candidate"] == candidate
+    assert reviews[0]["candidate_sha256"] == reviews[1]["candidate_sha256"]
+    assert len(reviews[0]["candidate_sha256"]) == 64

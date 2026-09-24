@@ -80,7 +80,7 @@ async def gate(origin: str, alias: str) -> dict:
         follow_redirects=False,
         trust_env=False,
         limits=limits,
-        headers={"User-Agent": "BoundaryLab/0.2 CI-gate"},
+        headers={"User-Agent": "BoundaryLab/0.3 CI-gate"},
     ) as client:
         report = await InvoiceScenario(
             ScopedTransport(client, base_url=trusted_origin, limits=TransportLimits()),

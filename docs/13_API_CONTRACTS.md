@@ -15,6 +15,8 @@ Machine sources: [control API OpenAPI](../contracts/control-api.openapi.json), [
 | GET `/spec` | Return the bundled fixture contract and operation inventory |
 | POST `/discovery/analyses` | Passively analyze OpenAPI 3.x plus optional HAR; persist derived metadata only |
 | GET `/discovery/analyses` | Return recent persisted discovery results |
+| POST `/discovery/analyses/{analysis_id}/reviews` | Append an approved/rejected candidate decision with rationale and snapshot hash |
+| GET `/discovery/analyses/{analysis_id}/reviews` | Return the ordered, append-only decision ledger |
 | POST `/runs` | Require a trusted target alias; create queued run, 202 |
 | GET `/runs` | Bounded recent run list for comparisons |
 | GET `/runs/{run_id}` | Return state, scope, case counts, assessment and cleanup state |
@@ -32,6 +34,8 @@ Only one run executes at a time. Queue length is capped at 10 and overflow retur
 Errors use `{error:{code,message,request_id}}`; never include exception stacks or credential values. Use 422 for invalid documents, 413 for oversized discovery input, 401/403 for control-plane auth, 409 for state/capability conflicts, 429 for queue pressure and 502 for a failed optional remediation provider.
 
 Discovery requests are capped at 2 MB, 500 OpenAPI paths, 2,000 operations and 5,000 HAR entries. External `$ref` values are rejected without network access. HAR headers, cookies, query strings and bodies are not stored. Candidate invariants are marked for review and cannot initiate active traffic.
+
+Candidate decisions require at least eight non-space rationale characters. The server resolves the candidate from the persisted analysis rather than accepting a client-supplied rule body, then stores the exact candidate snapshot and its canonical SHA-256. Later decisions append records; they do not mutate earlier ledger entries.
 
 ## Target adapter
 

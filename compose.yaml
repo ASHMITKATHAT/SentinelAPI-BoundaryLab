@@ -1,0 +1,23 @@
+services:
+  boundarylab:
+    build:
+      context: .
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      BOUNDARYLAB_BOOTSTRAP_SECRET: "${BOUNDARYLAB_BOOTSTRAP_SECRET:?Set a 16+ character BOUNDARYLAB_BOOTSTRAP_SECRET}"
+      BOUNDARYLAB_AI_MODEL: "${BOUNDARYLAB_AI_MODEL:-gpt-6-astra}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+    volumes:
+      - boundarylab-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  boundarylab-data:

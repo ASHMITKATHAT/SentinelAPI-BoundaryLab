@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "SentinelAPI BoundaryLab control API",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "servers": [
     {
@@ -313,6 +313,104 @@
               "minimum": 1,
               "maximum": 50,
               "default": 20
+            }
+          }
+        ]
+      }
+    },
+    "/discovery/analyses/{analysis_id}/reviews": {
+      "post": {
+        "operationId": "createCandidateReview",
+        "summary": "Append an approve/reject decision with rationale and immutable candidate hash",
+        "responses": {
+          "201": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateReview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Typed error; see documentation for 401/403/409/413/422/429/503",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "analysis_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateReviewRequest"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listCandidateReviews",
+        "summary": "Read the append-only candidate decision ledger",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CandidateReview"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Typed error; see documentation for 401/403/409/413/422/429/503",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "analysis_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
             }
           }
         ]
@@ -2128,6 +2226,88 @@
           "traffic_diff",
           "safety",
           "limitations"
+        ]
+      },
+      "CandidateReviewRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ]
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "candidate_id",
+          "decision",
+          "rationale"
+        ]
+      },
+      "CandidateReview": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "analysis_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "candidate_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ]
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reviewer": {
+            "type": "string",
+            "minLength": 1
+          },
+          "candidate_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "created_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "candidate": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "id",
+          "analysis_id",
+          "candidate_id",
+          "decision",
+          "rationale",
+          "reviewer",
+          "candidate_sha256",
+          "created_at",
+          "candidate"
         ]
       },
       "ExplanationRequest": {

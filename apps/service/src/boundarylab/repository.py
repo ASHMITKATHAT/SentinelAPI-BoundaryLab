@@ -98,6 +98,19 @@ class Repository:
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_discovery_created_at ON discovery_analyses(created_at DESC);
+                CREATE TABLE IF NOT EXISTS candidate_reviews (
+                    id TEXT PRIMARY KEY,
+                    analysis_id TEXT NOT NULL REFERENCES discovery_analyses(id) ON DELETE CASCADE,
+                    candidate_id TEXT NOT NULL,
+                    decision TEXT NOT NULL CHECK(decision IN ('approved','rejected')),
+                    rationale TEXT NOT NULL,
+                    reviewer TEXT NOT NULL,
+                    candidate_sha256 TEXT NOT NULL,
+                    candidate_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_candidate_reviews_analysis_created
+                    ON candidate_reviews(analysis_id, created_at, id);
                 CREATE TABLE IF NOT EXISTS explanations (
                     id TEXT PRIMARY KEY,
                     run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -115,6 +128,10 @@ class Repository:
             )
             connection.execute(
                 "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(2, ?)",
+                (utc_now(),),
+            )
+            connection.execute(
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(3, ?)",
                 (utc_now(),),
             )
             now = utc_now()
@@ -303,6 +320,82 @@ class Repository:
                 "label": row["label"],
                 "created_at": row["created_at"],
                 **json.loads(row["result_json"]),
+            }
+            for row in rows
+        ]
+
+    def get_discovery_analysis(self, analysis_id: str) -> dict[str, Any] | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT id,label,result_json,created_at FROM discovery_analyses WHERE id=?",
+                (analysis_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "label": row["label"],
+            "created_at": row["created_at"],
+            **json.loads(row["result_json"]),
+        }
+
+    def create_candidate_review(
+        self,
+        analysis_id: str,
+        candidate: dict[str, Any],
+        decision: str,
+        rationale: str,
+        reviewer: str = "local-operator",
+    ) -> dict[str, Any]:
+        review_id = f"review_{secrets.token_hex(8)}"
+        created_at = utc_now()
+        candidate_json = json.dumps(candidate, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        candidate_sha256 = hashlib.sha256(candidate_json.encode("utf-8")).hexdigest()
+        with self.connection() as connection:
+            connection.execute(
+                """INSERT INTO candidate_reviews(
+                       id,analysis_id,candidate_id,decision,rationale,reviewer,
+                       candidate_sha256,candidate_json,created_at
+                   ) VALUES(?,?,?,?,?,?,?,?,?)""",
+                (
+                    review_id,
+                    analysis_id,
+                    str(candidate["id"]),
+                    decision,
+                    rationale,
+                    reviewer,
+                    candidate_sha256,
+                    candidate_json,
+                    created_at,
+                ),
+            )
+        return {
+            "id": review_id,
+            "analysis_id": analysis_id,
+            "candidate_id": str(candidate["id"]),
+            "decision": decision,
+            "rationale": rationale,
+            "reviewer": reviewer,
+            "candidate_sha256": candidate_sha256,
+            "created_at": created_at,
+            "candidate": candidate,
+        }
+
+    def list_candidate_reviews(self, analysis_id: str) -> list[dict[str, Any]]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                """SELECT id,analysis_id,candidate_id,decision,rationale,reviewer,
+                          candidate_sha256,candidate_json,created_at
+                   FROM candidate_reviews WHERE analysis_id=? ORDER BY rowid""",
+                (analysis_id,),
+            ).fetchall()
+        return [
+            {
+                **{key: row[key] for key in (
+                    "id", "analysis_id", "candidate_id", "decision", "rationale",
+                    "reviewer", "candidate_sha256", "created_at",
+                )},
+                "candidate": json.loads(row["candidate_json"]),
             }
             for row in rows
         ]

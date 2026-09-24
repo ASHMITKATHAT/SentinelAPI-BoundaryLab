@@ -24,6 +24,8 @@ Automated verification covers scenario verdicts, transport bounds and redaction,
 
 The Discovery workspace accepts OpenAPI 3.x JSON and optional HAR JSON. It derives operation coverage, flags resource-ID operations as human-reviewed dual-identity candidates and compares observed method/path templates with the contract. It sends no target requests. It does not persist HAR headers, cookies, query strings or bodies, and it generalizes identifier-like path segments.
 
+Candidate governance is implemented as an append-only decision ledger. Approve/reject requests reference a candidate ID from the stored analysis; the server stores its exact snapshot, canonical SHA-256, rationale, reviewer and timestamp. This prevents the browser from substituting an unreviewed rule body and preserves superseded decisions for inspection.
+
 This makes the product useful on an unfamiliar API before an active adapter exists. Active execution still requires a trusted adapter defining actors, seed/setup, resource extraction, allowed operations, protected markers and cleanup. Arbitrary remote scanning is intentionally unavailable until isolated runners and DNS/IP pinning exist.
 
 ## Remediation and CI
@@ -53,11 +55,13 @@ The system is production-minded for a controlled local demonstration. It has not
 5. Load, soak, browser end-to-end and disaster-recovery tests in the deployment environment.
 6. Dependency/SBOM scanning, threat-model review and an independent security assessment.
 
+A multi-stage Dockerfile and hardened local Compose profile are included for repeatable packaging. Only port 8080 is published on host loopback; fixture ports remain private, the process is non-root, the root filesystem is read-only and Linux capabilities are dropped. Docker is unavailable on the local verification host. The GitHub workflow therefore owns the actual image-build and hardened runtime smoke-test gate; do not claim that gate until its run succeeds for the release commit.
+
 Until those gates are complete, describe BoundaryLab as a working local pilot or hackathon MVP. Describe a successful scan as **pass in scope**, never as proof that the target is secure in general.
 
 ## Mentor demonstration path
 
-1. Open Discovery, load the disclosed traffic sample and show the shadow route plus generated dual-identity candidates.
+1. Open Discovery, load the disclosed traffic sample, show the shadow route and approve one generated candidate with a written rationale.
 2. Open Policy and point to the 2,000 ms revocation promise.
 3. Queue the three-build proof from Live runs.
 4. Open vulnerable evidence and generate deterministic remediation.

@@ -34,6 +34,28 @@ jobs:
         run: npm ci && npm run build
       - name: Validate contracts and documentation
         run: python tools/validate_pack.py
+      - name: Build and smoke-test hardened container
+        shell: bash
+        run: |
+          docker build --tag boundarylab:ci .
+          CONTAINER_ID=$(docker run --detach \
+            --read-only \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,noexec,nosuid,size=32m \
+            --tmpfs /data:rw,noexec,nosuid,size=64m,mode=1777 \
+            --env BOUNDARYLAB_BOOTSTRAP_SECRET=ci-container-boundary-secret \
+            --publish 127.0.0.1:18080:8080 \
+            boundarylab:ci)
+          trap 'docker rm --force "$CONTAINER_ID" >/dev/null 2>&1 || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:18080/api/healthz | grep --quiet '"version":"0.3.0"'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "$CONTAINER_ID"
+          exit 1
       - name: Run live authorization gate against fixed build
         shell: bash
         run: |

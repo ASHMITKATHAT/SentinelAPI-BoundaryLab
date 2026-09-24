@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from './api'
-import type { Capabilities, CaseResult, Comparison, DiscoveryAnalysis, Evidence, Explanation, Report, Run, SpecSummary, Target, Verdict } from './types'
+import type { CandidateReview, Capabilities, CaseResult, Comparison, DiscoveryAnalysis, Evidence, Explanation, Report, Run, SpecSummary, Target, Verdict } from './types'
 
 type View = 'runs' | 'discovery' | 'policy' | 'compare' | 'reports'
 
@@ -162,6 +162,9 @@ function DiscoveryView({ spec }: { spec: SpecSummary | null }) {
   const [specText, setSpecText] = useState('')
   const [harText, setHarText] = useState('')
   const [result, setResult] = useState<DiscoveryAnalysis | null>(null)
+  const [reviews, setReviews] = useState<CandidateReview[]>([])
+  const [rationales, setRationales] = useState<Record<string, string>>({})
+  const [reviewBusy, setReviewBusy] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => { if (spec?.document && !specText) setSpecText(JSON.stringify(spec.document, null, 2)) }, [spec?.document])
@@ -183,13 +186,30 @@ function DiscoveryView({ spec }: { spec: SpecSummary | null }) {
     try {
       const document = JSON.parse(specText) as Record<string, unknown>
       const har = harText.trim() ? JSON.parse(harText) as Record<string, unknown> : null
-      setResult(await api.analyze(label, document, har))
+      const analysis = await api.analyze(label, document, har)
+      setResult(analysis); setReviews([]); setRationales({})
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Discovery analysis failed') }
     finally { setBusy(false) }
   }
+  async function reviewCandidate(candidateId: string, decision: 'approved' | 'rejected') {
+    const rationale = rationales[candidateId]?.trim() || ''
+    if (rationale.length < 8) { setError('Add a decision rationale of at least 8 characters.'); return }
+    if (!result) return
+    setReviewBusy(candidateId); setError('')
+    try {
+      const review = await api.reviewCandidate(result.id, candidateId, decision, rationale)
+      setReviews(current => [...current, review])
+      setRationales(current => ({ ...current, [candidateId]: '' }))
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not record the policy decision') }
+    finally { setReviewBusy('') }
+  }
   return <><header className="page-head"><div><p className="eyebrow">Spec + traffic intelligence</p><h1>Find the boundary before attacking it.</h1><p>Import OpenAPI and optional HAR traffic. BoundaryLab derives review candidates and identifies observed routes missing from the contract without sending active requests.</p></div><div className="demo-flag"><i/>Passive analysis</div></header>
     <section className="card discovery-input"><div className="discovery-copy"><span className="step-number">02</span><div><h2>Analyze a real API surface</h2><p>HAR headers, cookies and bodies are never persisted. Candidate rules require human approval before an active adapter can use them.</p></div></div><label>Analysis label<input value={label} maxLength={120} onChange={event => setLabel(event.target.value)}/></label><div className="import-grid"><label>OpenAPI 3.x JSON<input type="file" accept="application/json,.json" onChange={event => loadFile(event.target.files?.[0], 'spec')}/><textarea value={specText} onChange={event => setSpecText(event.target.value)} spellCheck={false}/></label><label>Optional HAR JSON<input type="file" accept="application/json,.har" onChange={event => loadFile(event.target.files?.[0], 'har')}/><textarea value={harText} onChange={event => setHarText(event.target.value)} placeholder="Paste or select a HAR export to detect shadow routes" spellCheck={false}/><button className="text-link" type="button" onClick={loadDemoTraffic}>Load disclosed demo traffic</button></label></div><div className="discovery-submit"><button className="button primary" disabled={busy || !label.trim() || !specText.trim()} onClick={analyze}>{busy ? 'Analyzing…' : harText.trim() ? 'Analyze spec + traffic' : 'Analyze without active traffic'}</button><span className="micro muted">2 MB request cap · 500 paths · 5,000 HAR entries</span></div>{error && <p className="form-error" role="alert">{error}</p>}</section>
-    {result && <><section className="metrics discovery-metrics"><div><span>Operations</span><b>{result.summary.documented_operations}</b></div><div><span>Ownership candidates</span><b>{result.summary.ownership_candidates}</b></div><div className={result.summary.shadow_operations ? 'metric-danger' : ''}><span>Shadow routes</span><b>{result.summary.shadow_operations}</b></div><div><span>HAR entries</span><b>{result.summary.har_entries}</b></div></section><section className="discovery-grid"><div className="card"><div className="section-head"><div><p className="eyebrow">Policy candidates</p><h2>Dual-identity replay plan</h2></div><code>{result.spec.sha256.slice(0,12)}…</code></div>{result.invariant_candidates.length ? <div className="candidate-list">{result.invariant_candidates.map(candidate => <article key={candidate.id}><div><code>{candidate.method} {candidate.path}</code><span className={`confidence confidence-${candidate.confidence}`}>{candidate.confidence}</span></div><h3>{candidate.operation_id}</h3><p>{candidate.proposed_rule}</p><small>{candidate.required_setup}</small></article>)}</div> : <div className="empty-small">No resource-ID read/update operations were inferred. Review the contract manually.</div>}</div><aside className="card shadow-panel"><p className="eyebrow">Traffic diff</p><h2>{result.traffic_diff.provided ? 'Observed vs documented' : 'Add HAR for shadow routes'}</h2>{result.traffic_diff.shadow_operations.map(item => <div className="shadow-route" key={`${item.method}-${item.path}`}><code>{item.method}</code><strong>{item.path}</strong><span>{item.sample_count}× · {item.risk}</span></div>)}{result.traffic_diff.provided && !result.traffic_diff.shadow_operations.length && <p className="success-note">No unmatched routes in this traffic sample.</p>}<div className="notice">Unobserved operations are not labelled zombie APIs because a HAR sample can be incomplete.</div></aside></section></>}
+    {result && <><section className="metrics discovery-metrics"><div><span>Operations</span><b>{result.summary.documented_operations}</b></div><div><span>Ownership candidates</span><b>{result.summary.ownership_candidates}</b></div><div className={result.summary.shadow_operations ? 'metric-danger' : ''}><span>Shadow routes</span><b>{result.summary.shadow_operations}</b></div><div><span>Ledger decisions</span><b>{reviews.length}</b></div></section><section className="discovery-grid"><div className="card"><div className="section-head"><div><p className="eyebrow">Policy candidates</p><h2>Review before replay</h2></div><code>{result.spec.sha256.slice(0,12)}…</code></div>{result.invariant_candidates.length ? <div className="candidate-list">{result.invariant_candidates.map(candidate => {
+      const latest = reviews.filter(review => review.candidate_id === candidate.id).at(-1)
+      const rationale = rationales[candidate.id] || ''
+      return <article key={candidate.id}><div><code>{candidate.method} {candidate.path}</code><span className={`confidence confidence-${candidate.confidence}`}>{candidate.confidence}</span></div><h3>{candidate.operation_id}</h3><p>{candidate.proposed_rule}</p><small>{candidate.required_setup}</small>{latest && <div className={`decision-record decision-${latest.decision}`}><strong>{latest.decision}</strong><span>{latest.rationale}</span><code>{latest.candidate_sha256.slice(0,12)}… · {latest.reviewer}</code></div>}<label className="decision-rationale">Decision rationale<input value={rationale} maxLength={500} placeholder="Why should this rule enter or stay out of policy?" onChange={event => setRationales(current => ({ ...current, [candidate.id]: event.target.value }))}/></label><div className="decision-actions"><button className="button primary compact" disabled={reviewBusy === candidate.id || rationale.trim().length < 8} onClick={() => reviewCandidate(candidate.id, 'approved')}>{reviewBusy === candidate.id ? 'Recording…' : 'Approve candidate'}</button><button className="button secondary compact" disabled={reviewBusy === candidate.id || rationale.trim().length < 8} onClick={() => reviewCandidate(candidate.id, 'rejected')}>Reject</button><span>Append-only decision ledger</span></div></article>
+    })}</div> : <div className="empty-small">No resource-ID read/update operations were inferred. Review the contract manually.</div>}</div><aside className="card shadow-panel"><p className="eyebrow">Traffic diff</p><h2>{result.traffic_diff.provided ? 'Observed vs documented' : 'Add HAR for shadow routes'}</h2>{result.traffic_diff.shadow_operations.map(item => <div className="shadow-route" key={`${item.method}-${item.path}`}><code>{item.method}</code><strong>{item.path}</strong><span>{item.sample_count}× · {item.risk}</span></div>)}{result.traffic_diff.provided && !result.traffic_diff.shadow_operations.length && <p className="success-note">No unmatched routes in this traffic sample.</p>}<div className="notice">Unobserved operations are not labelled zombie APIs because a HAR sample can be incomplete.</div></aside></section></>}
   </>
 }
 

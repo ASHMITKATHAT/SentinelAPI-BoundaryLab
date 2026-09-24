@@ -42,8 +42,20 @@ The owner-only build matters: it closes access too aggressively and breaks legit
 - Evidence redaction and response-field allowlisting before persistence.
 - A responsive React interface using navy blue, red shades, grey and white, with accessible labels and reduced-motion handling.
 - Passive OpenAPI 3.x and HAR analysis that finds resource-ID operations, proposes dual-identity policy candidates and reports traffic routes missing from the contract.
+- An append-only policy decision ledger that records approve/reject rationale, reviewer, timestamp and an immutable hash of the exact candidate snapshot.
 - Persisted deterministic remediation with an optional, explicitly invoked Structured Outputs model path. AI never controls execution or changes a verdict.
 - A loopback-only CI gate with configurable failure conditions and a GitHub Actions workflow that runs the fixed build through real sockets.
+
+## Run the hardened local container
+
+The container keeps all three synthetic targets on its private loopback and publishes only the workbench on host loopback. It runs as a non-root user; the Compose profile drops Linux capabilities, uses a read-only root filesystem and persists SQLite state in a named volume.
+
+```powershell
+$env:BOUNDARYLAB_BOOTSTRAP_SECRET = 'replace-with-a-16-plus-character-secret'
+docker compose up --build
+```
+
+Open `http://127.0.0.1:8080`. The container profile improves repeatability for a local pilot; it does not turn the application into a public multi-tenant service. Static packaging controls are checked by `tools/validate_pack.py`; the GitHub workflow performs the actual image build and hardened container smoke test.
 
 See [implementation status](docs/32_IMPLEMENTATION_STATUS.md) for verified behavior and the remaining hosted-production gates.
 

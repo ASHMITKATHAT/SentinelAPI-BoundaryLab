@@ -10,7 +10,7 @@
 | Identity/access | **Passed locally:** one operator, CSRF, Origin and Trusted Host checks | Appropriate customer access controls | SSO/RBAC/tenant authorization and negative tests |
 | Reliability | **Passed locally:** crash/cancel/cleanup semantics and restart persistence | Backup/restore rehearsal, defined retention | Recovery objectives, monitoring, incident response and tested restores |
 | Evidence | **Passed locally:** bounded sanitized evidence, report escaping and hashes | Customer-reviewed data handling and deletion | Enforced retention, access logs, export controls and contractual terms |
-| Deployment | **Passed locally:** lockfile, repeatable setup and CI workflow | Update/rollback documentation and security review | Hardened images, patch process, capacity tests and operational ownership |
+| Deployment | **Partially passed:** lockfile, repeatable setup, non-root hardened container profile and CI build/smoke gate; local host has no Docker | Verify successful release-commit container gate, update/rollback documentation and security review | Hardened image lifecycle, patch process, capacity tests and operational ownership |
 | Claims | **Passed:** tested-scope language and seeded-fixture disclosure | Measured pilot outcomes only | Supported service commitments based on measured capability |
 
 ## Proposed SLOs to validate later
@@ -21,6 +21,6 @@ A future pilot may choose recovery point/time objectives based on customer needs
 
 ## Release evidence checklist
 
-Record application commit, dependency lock hashes, environment, completed tests and failures, actual run IDs, policy/suite/fixture hashes, known unsupported operations and operator instructions. A release owner signs off on any unresolved risk. Never promote a design prototype into production by removing its label.
+Record application commit, dependency lock hashes, environment, completed tests and failures, actual run IDs, policy/suite/fixture hashes, candidate decision hashes, known unsupported operations and operator instructions. A release owner signs off on any unresolved risk. Never promote a design prototype into production by removing its label.
 
 The sensible two-day promise is **a complete, inspectable local workflow built with production-minded boundaries**. Broader production readiness takes additional implementation, independent usage and review.

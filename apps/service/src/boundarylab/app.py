@@ -33,7 +33,11 @@ class Settings:
     database_path: Path
     bootstrap_secret: str
     targets: dict[str, TrustedTarget]
-    allowed_origins: tuple[str, ...] = ("http://127.0.0.1:8080", "http://localhost:5173")
+    allowed_origins: tuple[str, ...] = (
+        "http://127.0.0.1:8080",
+        "http://localhost:8080",
+        "http://localhost:5173",
+    )
     secure_cookie: bool = False
     web_dist: Path = ROOT / "apps" / "web" / "dist"
     openai_api_key: str | None = None
@@ -95,6 +99,13 @@ class ExplanationCreate(BaseModel):
     mode: Literal["deterministic", "ai"] = "deterministic"
 
 
+class CandidateReviewCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    candidate_id: str = Field(min_length=1, max_length=200)
+    decision: Literal["approved", "rejected"]
+    rationale: str = Field(min_length=8, max_length=500)
+
+
 async def validated_json(request: Request, model: type[BaseModel], *, limit: int = 2_000_000) -> BaseModel:
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if content_type != "application/json":
@@ -135,7 +146,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="SentinelAPI BoundaryLab control API",
-        version="0.2.0",
+        version="0.3.0",
         description="Local single-operator authorization regression workbench",
         lifespan=lifespan,
         docs_url="/api/docs",
@@ -189,7 +200,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/healthz")
     async def health():
-        return {"status": "ok", "service": "boundarylab", "version": "0.2.0"}
+        return {"status": "ok", "service": "boundarylab", "version": "0.3.0"}
 
     @app.post("/api/v1/session", status_code=201)
     async def create_session(body: SessionCreate, request: Request, response: Response):
@@ -237,7 +248,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/v1/capabilities")
     async def capabilities(_: dict = Depends(session_dependency)):
         return {
-            "discovery": {"openapi": True, "har": True, "active_replay": "trusted_adapters_only"},
+            "discovery": {
+                "openapi": True,
+                "har": True,
+                "active_replay": "trusted_adapters_only",
+                "candidate_reviews": "append_only",
+            },
             "remediation": {
                 "deterministic": True,
                 "ai_configured": bool(configured.openai_api_key),
@@ -282,6 +298,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not 1 <= limit <= 50:
             raise HTTPException(status_code=422, detail="limit must be between 1 and 50")
         return repository.list_discovery_analyses(limit)
+
+    @app.get("/api/v1/discovery/analyses/{analysis_id}/reviews")
+    async def list_candidate_reviews(analysis_id: str, _: dict = Depends(session_dependency)):
+        if not repository.get_discovery_analysis(analysis_id):
+            raise HTTPException(status_code=404, detail="discovery analysis not found")
+        return repository.list_candidate_reviews(analysis_id)
+
+    @app.post("/api/v1/discovery/analyses/{analysis_id}/reviews", status_code=201)
+    async def create_candidate_review(
+        analysis_id: str,
+        body: CandidateReviewCreate,
+        _: dict = Depends(mutation_dependency),
+    ):
+        analysis = repository.get_discovery_analysis(analysis_id)
+        if not analysis:
+            raise HTTPException(status_code=404, detail="discovery analysis not found")
+        candidate = next(
+            (item for item in analysis.get("invariant_candidates", []) if item.get("id") == body.candidate_id),
+            None,
+        )
+        if not candidate:
+            raise HTTPException(status_code=422, detail="candidate does not belong to this analysis")
+        rationale = body.rationale.strip()
+        if len(rationale) < 8:
+            raise HTTPException(status_code=422, detail="decision rationale must contain at least 8 non-space characters")
+        return repository.create_candidate_review(
+            analysis_id,
+            candidate,
+            body.decision,
+            rationale,
+        )
 
     @app.post("/api/v1/runs", status_code=202)
     async def create_run(body: RunCreate, _: dict = Depends(mutation_dependency)):

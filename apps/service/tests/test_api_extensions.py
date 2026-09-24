@@ -88,6 +88,43 @@ async def test_discovery_and_remediation_endpoints_are_authenticated_persisted_a
             stored = await client.get("/api/v1/discovery/analyses")
             assert stored.json()[0]["id"] == analysis.json()["id"]
 
+            candidate_id = analysis.json()["invariant_candidates"][0]["id"]
+            review = await client.post(
+                f"/api/v1/discovery/analyses/{analysis.json()['id']}/reviews",
+                headers=headers,
+                json={
+                    "candidate_id": candidate_id,
+                    "decision": "approved",
+                    "rationale": "Order ownership must be checked before response serialization.",
+                },
+            )
+            assert review.status_code == 201, review.text
+            assert review.json()["decision"] == "approved"
+            assert review.json()["reviewer"] == "local-operator"
+            assert len(review.json()["candidate_sha256"]) == 64
+            ledger = await client.get(
+                f"/api/v1/discovery/analyses/{analysis.json()['id']}/reviews"
+            )
+            assert [item["id"] for item in ledger.json()] == [review.json()["id"]]
+
+            unknown_candidate = await client.post(
+                f"/api/v1/discovery/analyses/{analysis.json()['id']}/reviews",
+                headers=headers,
+                json={
+                    "candidate_id": "ownership-does-not-exist",
+                    "decision": "approved",
+                    "rationale": "This candidate was not part of the saved analysis.",
+                },
+            )
+            assert unknown_candidate.status_code == 422
+
+            blank_rationale = await client.post(
+                f"/api/v1/discovery/analyses/{analysis.json()['id']}/reviews",
+                headers=headers,
+                json={"candidate_id": candidate_id, "decision": "rejected", "rationale": "        "},
+            )
+            assert blank_rationale.status_code == 422
+
             triage = await client.post(
                 f"/api/v1/runs/{run['id']}/explanations",
                 headers=headers,
