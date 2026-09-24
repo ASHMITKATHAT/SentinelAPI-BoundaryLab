@@ -20,7 +20,7 @@ Pop-Location
 & '.\tools\start-local.ps1' -LabFixtures
 ```
 
-Open `http://127.0.0.1:8080` and enter the bootstrap secret printed by the server. Open **Verify**, run the disclosed lab matrix, then show the live evidence, policy, repair comparison and report handoff screens. Runtime state survives a browser refresh and service restart in `var/boundarylab.db`.
+Open `http://127.0.0.1:8080` and enter the bootstrap secret printed by the server. The **Start** workspace presents the mentor story and links every working capability into a five-stage walkthrough: Discover, Define, Verify, Compare and Handoff. Follow it in order, run the disclosed lab matrix in Verify, then show the live evidence and scoped release decision. Runtime state survives a browser refresh and service restart in `var/boundarylab.db`.
 
 `start-local.ps1` launches the workbench as a hidden background process, waits for `/api/healthz`, prints the one-time login secret and records the process/log paths under `var`. This avoids leaving a stale browser shell that later reports a vague network failure.
 
@@ -50,6 +50,7 @@ The owner-only build matters: it closes access too aggressively and breaks legit
 - A fail-closed real-target mode for a reviewed OpenAPI-bound `GET`, multiple environment-backed identities, marker proof and identity-specific forbidden fields.
 - A deterministic release gate that compares an ordered baseline and candidate, then explains fixed controls, preserved product behavior, regressions and missing evidence.
 - Connection-aware UI errors, session-expiry recovery, request timeouts and a persistent local launcher with a health check.
+- A mentor-first product overview and persistent stage guide that make discovery, policy, runtime proof, remediation, release comparison, reports, CI and real-target safeguards visible without relying on a separate explanation.
 
 ## Run the hardened local container
 

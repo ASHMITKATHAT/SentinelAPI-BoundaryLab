@@ -2,9 +2,11 @@ import { Component, FormEvent, Fragment, ReactNode, useCallback, useEffect, useM
 import { api, getApiStatus, subscribeApiStatus } from './api'
 import type { CandidateReview, Capabilities, CaseResult, Comparison, DiscoveryAnalysis, Evidence, Explanation, PolicySummary, Report, Run, SpecSummary, Target, Verdict } from './types'
 
-type View = 'runs' | 'discovery' | 'policy' | 'compare' | 'reports'
+type View = 'overview' | 'runs' | 'discovery' | 'policy' | 'compare' | 'reports'
+type StageView = Exclude<View, 'overview'>
 
 const viewMeta: Record<View, { index: string; label: string; short: string; icon: IconName }> = {
+  overview: { index: '00', label: 'Mentor walkthrough', short: 'Start', icon: 'home' },
   discovery: { index: '01', label: 'API discovery', short: 'Discover', icon: 'radar' },
   policy: { index: '02', label: 'Policy contract', short: 'Define', icon: 'shield' },
   runs: { index: '03', label: 'Verification runs', short: 'Verify', icon: 'pulse' },
@@ -12,10 +14,21 @@ const viewMeta: Record<View, { index: string; label: string; short: string; icon
   reports: { index: '05', label: 'Evidence handoff', short: 'Handoff', icon: 'report' },
 }
 
-type IconName = 'radar' | 'shield' | 'pulse' | 'compare' | 'report' | 'chevron' | 'refresh' | 'lock' | 'alert'
+const stageOrder: StageView[] = ['discovery', 'policy', 'runs', 'compare', 'reports']
+
+const stageGuide: Record<StageView, { question: string; proof: string; features: string[] }> = {
+  discovery: { question: 'Where could protected data escape?', proof: 'Show the API inventory, ownership candidates and any route seen in traffic but missing from the contract.', features: ['OpenAPI inventory', 'HAR route diff', 'Shadow route detection'] },
+  policy: { question: 'Who is allowed to see which data, and when?', proof: 'Show that business promises become versioned, hashed acceptance cases before requests are sent.', features: ['Ownership rules', 'Field-level privacy', 'Revocation deadline'] },
+  runs: { question: 'Does the real permission journey behave correctly?', proof: 'Show the request timeline, post-revoke export probe, case verdicts, sanitized evidence and repair guidance.', features: ['Lifecycle replay', 'Multiple identities', 'Evidence + remediation'] },
+  compare: { question: 'Did the fix close the leak without breaking the product?', proof: 'Compare the old build with the candidate and point to fixed, preserved, regressed and unresolved cases.', features: ['Regression proof', 'Release decision', 'No deny-everyone fix'] },
+  reports: { question: 'Can engineering, security and CI use the result?', proof: 'Export a human report or machine evidence bundle tied to the tested build and policy.', features: ['HTML handoff', 'JSON evidence', 'CI/CD gate'] },
+}
+
+type IconName = 'home' | 'radar' | 'shield' | 'pulse' | 'compare' | 'report' | 'chevron' | 'refresh' | 'lock' | 'alert'
 
 function Icon({ name, size = 17 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, ReactNode> = {
+    home: <><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5M9.5 20v-6h5v6"/></>,
     radar: <><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v2M22 12h-2M12 22v-2M2 12h2M14.2 9.8l4-4"/></>,
     shield: <><path d="M12 3 19 6v5c0 4.7-2.8 8-7 10-4.2-2-7-5.3-7-10V6l7-3Z"/><path d="m9 12 2 2 4-5"/></>,
     pulse: <><path d="M3 12h4l2-6 4 12 2-6h6"/></>,
@@ -40,6 +53,14 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: bool
 
 const verdictLabel: Record<Verdict, string> = {
   pass: 'Pass', violation: 'Violation', inconclusive: 'Inconclusive', skipped: 'Skipped',
+}
+
+function identityLabel(identity: string) {
+  return ({ alice: 'resource owner', bob: 'temporary user', mallory: 'external tenant', anonymous: 'anonymous' } as Record<string, string>)[identity.toLowerCase()] || identity
+}
+
+function caseLabel(name: string) {
+  return name.replaceAll('Alice', 'Resource owner').replaceAll('Bob', 'Temporary user').replaceAll('Mallory', 'External tenant')
 }
 
 function StatusBadge({ value }: { value: string | null }) {
@@ -78,7 +99,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
 }
 
 function SideNav({ view, setView, logout, activeRuns }: { view: View; setView: (view: View) => void; logout: () => void; activeRuns: number }) {
-  const items: View[] = ['discovery', 'policy', 'runs', 'compare', 'reports']
+  const items: View[] = ['overview', ...stageOrder]
   return <aside className="sidebar">
     <div><div className="brand"><div className="mark">B</div><div><strong>BoundaryLab</strong><small>SentinelAPI · v0.3.2</small></div></div>
       <p className="nav-section">Release workflow</p>
@@ -94,6 +115,48 @@ function SideNav({ view, setView, logout, activeRuns }: { view: View; setView: (
 
 function WorkspaceHeader({ view, activeRuns, policyLabel, connected }: { view: View; activeRuns: number; policyLabel: string; connected: boolean }) {
   return <header className="topbar"><div className="breadcrumbs"><span className="stage-index">{viewMeta[view].index}</span><strong>{viewMeta[view].label}</strong></div><div className="topbar-actions"><span className={`control-status ${connected ? '' : 'offline'}`}><i/>{connected ? activeRuns ? `${activeRuns} run${activeRuns > 1 ? 's' : ''} active` : 'Ready' : 'Server offline'}</span><span className="policy-pill"><code>{policyLabel}</code></span></div></header>
+}
+
+function WorkflowRail({ view, setView }: { view: View; setView: (view: View) => void }) {
+  if (view === 'overview') return null
+  return <nav className="workflow-rail" aria-label="Five-stage mentor walkthrough">
+    {stageOrder.map(id => <button key={id} className={view === id ? 'current' : ''} onClick={() => setView(id)} aria-label={`${viewMeta[id].index} ${viewMeta[id].short}: ${stageGuide[id].question}`} aria-current={view === id ? 'step' : undefined}>
+      <span>{viewMeta[id].index}</span><b>{viewMeta[id].short}</b>
+    </button>)}
+  </nav>
+}
+
+function StageBrief({ view, setView }: { view: StageView; setView: (view: View) => void }) {
+  const guide = stageGuide[view]
+  const currentIndex = stageOrder.indexOf(view)
+  const next = stageOrder[currentIndex + 1]
+  return <section className="stage-brief" aria-label={`${viewMeta[view].short} mentor guide`}>
+    <div className="stage-brief-number">{viewMeta[view].index}</div>
+    <div><p className="eyebrow">Question this stage answers</p><h2>{guide.question}</h2><p>{guide.proof}</p><div className="feature-chips">{guide.features.map(feature => <span key={feature}>{feature}</span>)}</div></div>
+    <button className="button secondary compact" onClick={() => setView(next || 'overview')}>{next ? `Next: ${viewMeta[next].short}` : 'Back to overview'} <span aria-hidden="true">→</span></button>
+  </section>
+}
+
+function MentorOverview({ setView, runs, targets, capabilities }: { setView: (view: View) => void; runs: Run[]; targets: Target[]; capabilities: Capabilities | null }) {
+  const completed = runs.filter(run => run.state === 'completed')
+  const violationCount = completed.reduce((total, run) => total + run.counts.violation, 0)
+  const featureGroups = [
+    { label: 'Discover', title: 'Find every data door', question: 'Where could data escape?', body: 'Map OpenAPI operations, infer ownership-sensitive routes and compare captured traffic to reveal undeclared shadow routes.', features: ['OpenAPI mapping', 'HAR traffic diff', 'Ownership candidates', 'Shadow APIs'], view: 'discovery' as View },
+    { label: 'Define', title: 'Turn access promises into tests', question: 'Who should see what?', body: 'Bind identities, owner-only fields and revocation timing to a versioned policy before any active request runs.', features: ['Role expectations', 'Field privacy', 'Revocation SLA', 'Hashed policy'], view: 'policy' as View },
+    { label: 'Verify', title: 'Replay the permission journey', question: 'Does revoke really work?', body: 'Exercise access before sharing, during sharing and after revoke—including old exports—then keep redacted case-level proof.', features: ['Identity isolation', 'Export-after-revoke', 'Evidence timeline', 'Root-cause guidance'], view: 'runs' as View },
+    { label: 'Compare', title: 'Prove the repair is safe', question: 'Did the fix break anything?', body: 'Compare an old build with a release candidate and separate repaired controls from preserved behavior and regressions.', features: ['Fixed cases', 'Preserved behavior', 'Regression detection', 'Release Gate'], view: 'compare' as View },
+    { label: 'Handoff', title: 'Make the proof reusable', question: 'Can the team act on it?', body: 'Export human and machine evidence, connect the same deterministic verdict to CI and retain a build-specific audit trail.', features: ['HTML report', 'JSON evidence', 'CI/CD exit gate', 'SHA-256 trace'], view: 'reports' as View },
+  ]
+  return <>
+    <section className="mentor-hero">
+      <div><p className="eyebrow light">Mentor walkthrough · start here</p><h1>One permission story.<br/><span>Five layers of proof.</span></h1><p>BoundaryLab finds every API door, defines who may use it, tests the full access lifecycle, proves the repair and packages the result for release.</p><div className="mentor-actions"><button className="button primary" onClick={() => setView('discovery')}>Start the 5-step demo</button><button className="button dark-secondary" onClick={() => setView('runs')}>Open live evidence</button></div></div>
+      <div className="breach-story"><p className="eyebrow light">The breach in four moments</p><ol><li><span>1</span><div><strong>Temporary access works</strong><small>A partner can read an invoice and create an export.</small></div></li><li><span>2</span><div><strong>Access is revoked</strong><small>The main screen correctly hides the invoice.</small></div></li><li className="danger"><span>3</span><div><strong>An old API door stays open</strong><small>The saved export URL still returns protected data.</small></div></li><li><span>4</span><div><strong>BoundaryLab proves the fix</strong><small>The old door returns deny while valid access still works.</small></div></li></ol></div>
+    </section>
+    <section className="live-proof-strip" aria-label="Current workspace proof"><div><span>Persisted runs</span><strong>{completed.length}</strong></div><div className={violationCount ? 'danger' : ''}><span>Observed violations</span><strong>{violationCount}</strong></div><div><span>Target modes</span><strong>{targets.some(target => !target.synthetic_fixture) ? 'Lab + staging' : 'Disclosed lab'}</strong></div><div><span>AI role</span><strong>{capabilities?.remediation.ai_configured ? 'Optional review ready' : 'Optional · verdicts stay deterministic'}</strong></div></section>
+    <section className="mentor-section-head"><div><p className="eyebrow">Complete product journey</p><h2>Show these stages in order.</h2><p>Every card answers one mentor question and opens the exact working screen that proves it.</p></div><span>Click any stage to inspect it</span></section>
+    <section className="feature-journey">{featureGroups.map((group, index) => <article className="card journey-card" key={group.label}><div className="journey-top"><span>{String(index + 1).padStart(2, '0')}</span><p>{group.label}</p></div><p className="journey-question">{group.question}</p><h3>{group.title}</h3><p className="journey-body">{group.body}</p><div className="feature-list">{group.features.map(feature => <span key={feature}>✓ {feature}</span>)}</div><button className="journey-link" aria-label={`Show ${group.label} proof`} onClick={() => setView(group.view)}>Show this proof <Icon name="chevron" size={13}/></button></article>)}</section>
+    <section className="production-proof card"><div><p className="eyebrow">Built for a real staging boundary</p><h2>The demo is disclosed. The execution path is production-shaped.</h2><p>Real mode binds one reviewed OpenAPI operation to allowlisted loopback or forwarded staging origins. Credentials stay in environment references; browser-supplied URLs, redirects and raw secrets are rejected.</p></div><div className="production-facts"><span><Icon name="lock"/>GET-only real probe</span><span><Icon name="shield"/>HttpOnly + CSRF session</span><span><Icon name="pulse"/>Bounded requests + cancellation</span><span><Icon name="report"/>Redacted, hashed evidence</span></div></section>
+  </>
 }
 
 function RunList({ runs, selected, select }: { runs: Run[]; selected?: string; select: (run: Run) => Promise<void> }) {
@@ -118,7 +181,7 @@ function Timeline({ report }: { report: Report }) {
   }
   return <div className="timeline">{picked.map((item, index) =>
     <div className={`timeline-step ${item.status_code && item.status_code >= 400 ? 'denied' : ''}`} key={`${item.evidence_id}-${index}`}>
-      <span className="time">+{item.start_offset_ms} ms</span><i>{index + 1}</i><strong>{item.operation_id}</strong><small>{item.identity} · HTTP {item.status_code}</small>
+      <span className="time">+{item.start_offset_ms} ms</span><i>{index + 1}</i><strong>{item.operation_id}</strong><small>{identityLabel(item.identity)} · HTTP {item.status_code}</small>
     </div>)}</div>
 }
 
@@ -179,7 +242,7 @@ function RunDetail({ run, cancel, capabilities }: { run: Run | null; cancel: (id
   }
   return <>
     <section className="run-hero card">
-      <div><p className="eyebrow">{realProbe ? 'Real staging boundary' : 'Permission lifecycle'} / {run.id}</p><h2>{realProbe ? 'Do the configured identities respect this resource boundary?' : 'Can Bob still retrieve the invoice after access is revoked?'}</h2><p className="muted">Target <code>{run.target_alias}</code> · build <code>{run.build_id || 'pending'}</code></p></div>
+      <div><p className="eyebrow">{realProbe ? 'Real staging boundary' : 'Permission lifecycle'} / {run.id}</p><h2>{realProbe ? 'Do the configured identities respect this resource boundary?' : 'Can a temporary user still retrieve the invoice after access is revoked?'}</h2><p className="muted">Target <code>{run.target_alias}</code> · build <code>{run.build_id || 'pending'}</code></p></div>
       <div className="hero-status"><StatusBadge value={run.assessment || run.state}/>{!['completed','failed','interrupted','cancelled'].includes(run.state) && <button className="button secondary compact" onClick={() => cancel(run.id)}>Cancel</button>}</div>
     </section>
     {!report && <section className="card working"><div className="spinner"/><div><h3>{run.state === 'queued' ? 'Waiting for the single safe worker' : 'Executing bounded target requests'}</h3><p>State and evidence are persisted. Refreshing this page will not lose the run.</p></div></section>}
@@ -190,7 +253,7 @@ function RunDetail({ run, cancel, capabilities }: { run: Run | null; cancel: (id
       <section className="card"><div className="section-head"><div><p className="eyebrow">Policy acceptance</p><h3>{report.cases.length} required cases</h3></div><span className="muted micro">Cleanup: {report.cleanup_status}</span></div>
         <div className="table-scroll"><table><thead><tr><th>Case</th><th>Permission promise</th><th>Expected</th><th>Observed</th><th>Verdict</th></tr></thead><tbody>
           {report.cases.map(item => <tr key={item.case_id} className={item.evidence_ids.length ? 'clickable' : ''} tabIndex={item.evidence_ids.length ? 0 : undefined} aria-label={item.evidence_ids.length ? `Open evidence for ${item.case_id}: ${item.name}` : undefined} onClick={event => { event.currentTarget.focus(); openCase(item) }} onKeyDown={event => { if (item.evidence_ids.length && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openCase(item) } }}>
-            <td><code>{item.case_id}</code></td><td><strong>{item.name}</strong>{item.reason_code && <small>{item.reason_code}</small>}</td><td>{item.expected}</td><td>{item.observed}</td><td><StatusBadge value={item.verdict}/></td>
+            <td><code>{item.case_id}</code></td><td><strong>{caseLabel(item.name)}</strong>{item.reason_code && <small>{item.reason_code}</small>}</td><td>{item.expected}</td><td>{item.observed}</td><td><StatusBadge value={item.verdict}/></td>
           </tr>)}</tbody></table></div>
       </section>
       <RemediationPanel run={run} capabilities={capabilities}/>
@@ -289,7 +352,7 @@ function PolicyView({ policy, spec }: { policy: PolicySummary | null; spec: Spec
   const realPolicy = document.scenario === 'read-boundary-v1'
   return <><header className="page-head"><div><p className="eyebrow">Access contract</p><h1>Define what access means.</h1><p>The API schema explains how to call an endpoint. This policy explains who should receive the data.</p></div><StatusBadge value={policy.approved ? 'approved' : 'draft'}/></header>
     <section className="policy-grid"><div className="card policy-main"><div className="section-head"><div><p className="eyebrow">{String(document.name)}</p><h2>{realPolicy ? 'Reviewed staging read boundary' : 'Invoice sharing policy · v1'}</h2></div><code>{policy.sha256.slice(0,12)}…</code></div>
-      {realPolicy ? <><div className="policy-callout"><span>Active safety contract</span><strong>One fixed GET is replayed for each reviewed identity.</strong><p>The configured marker must appear only for allowed identities. Redirects, arbitrary URLs and browser-supplied credentials are rejected.</p></div><div className="table-scroll"><table><thead><tr><th>Identity</th><th>Expected access</th><th>Forbidden response fields</th><th>Operation</th></tr></thead><tbody>{(document.identities || []).map((identity: any) => <tr key={identity.name}><td><strong>{identity.name}</strong></td><td><StatusBadge value={identity.expectation === 'allow' ? 'approved' : 'blocked'}/></td><td>{identity.forbidden_pointers?.length ? identity.forbidden_pointers.join(', ') : 'None declared'}</td><td><code>{document.operation_id}</code></td></tr>)}</tbody></table></div></> : <><div className="policy-callout"><span>Revocation promise</span><strong>Fresh export retrieval must stop within {document.revocation.grace_ms} ms.</strong><p>Measured after successful revoke acknowledgement, plus {document.revocation.probe_margin_ms} ms probe margin.</p></div><div className="table-scroll"><table><thead><tr><th>Relation</th><th>Private preview</th><th>Shared detail</th><th>Owner field</th><th>Export after revoke</th></tr></thead><tbody><tr><td>Alice · owner</td><td>Allow</td><td>Allow</td><td>Allow</td><td>Allow</td></tr><tr><td>Bob · active share</td><td>Deny</td><td>Allow</td><td>Deny</td><td>Allow</td></tr><tr><td>Bob · revoked</td><td>Deny</td><td>Deny</td><td>Deny</td><td>Deny</td></tr><tr><td>Mallory · tenant B</td><td>Deny</td><td>Deny</td><td>Deny</td><td>Deny</td></tr></tbody></table></div></>}
+      {realPolicy ? <><div className="policy-callout"><span>Active safety contract</span><strong>One fixed GET is replayed for each reviewed identity.</strong><p>The configured marker must appear only for allowed identities. Redirects, arbitrary URLs and browser-supplied credentials are rejected.</p></div><div className="table-scroll"><table><thead><tr><th>Identity</th><th>Expected access</th><th>Forbidden response fields</th><th>Operation</th></tr></thead><tbody>{(document.identities || []).map((identity: any) => <tr key={identity.name}><td><strong>{identityLabel(identity.name)}</strong></td><td><StatusBadge value={identity.expectation === 'allow' ? 'approved' : 'blocked'}/></td><td>{identity.forbidden_pointers?.length ? identity.forbidden_pointers.join(', ') : 'None declared'}</td><td><code>{document.operation_id}</code></td></tr>)}</tbody></table></div></> : <><div className="policy-callout"><span>Revocation promise</span><strong>Fresh export retrieval must stop within {document.revocation.grace_ms} ms.</strong><p>Measured after successful revoke acknowledgement, plus {document.revocation.probe_margin_ms} ms probe margin.</p></div><div className="table-scroll"><table><thead><tr><th>Relation</th><th>Private preview</th><th>Shared detail</th><th>Owner field</th><th>Export after revoke</th></tr></thead><tbody><tr><td>Resource owner</td><td>Allow</td><td>Allow</td><td>Allow</td><td>Allow</td></tr><tr><td>Temporary user · active</td><td>Deny</td><td>Allow</td><td>Deny</td><td>Allow</td></tr><tr><td>Temporary user · revoked</td><td>Deny</td><td>Deny</td><td>Deny</td><td>Deny</td></tr><tr><td>External tenant</td><td>Deny</td><td>Deny</td><td>Deny</td><td>Deny</td></tr></tbody></table></div></>}
       </div><aside className="card spec-card"><p className="eyebrow">Bound contract</p><h2>{spec.title}</h2><dl><div><dt>Format</dt><dd>OpenAPI {spec.openapi}</dd></div><div><dt>Operations</dt><dd>{spec.operation_count}</dd></div><div><dt>Required cases</dt><dd>{document.required_cases?.length || 0}</dd></div><div><dt>Execution</dt><dd>{realPolicy ? 'GET only' : document.fixture_semantics_version}</dd></div></dl><h3>Supported operations</h3><div className="code-list">{spec.operations.map(item => <code key={item}>{item}</code>)}</div><div className="notice policy-safety">{String(document.safety || 'Declared fixture policy')}</div></aside></section>
   </>
 }
@@ -315,7 +378,7 @@ function CompareView({ runs }: { runs: Run[] }) {
   const runLabel = (run: Run) => `${run.target_alias.replace('demo-','')} · ${run.build_id || run.id.slice(-6)} · ${run.assessment}`
   return <><header className="page-head"><div><p className="eyebrow">Release decision</p><h1>Prove the fix is safe to ship.</h1><p>Choose the old behavior and the release candidate. BoundaryLab counts repaired controls, preserved product behavior and new regressions.</p></div></header>
     <section className="card gate-picker"><div><p className="eyebrow">Step 1 · Baseline</p><h2>What are we replacing?</h2><select aria-label="Baseline run" value={baselineId} onChange={event => { setBaselineId(event.target.value); setComparison(null) }}><option value="">Choose baseline</option>{completed.map(run => <option key={run.id} value={run.id}>{runLabel(run)}</option>)}</select></div><span className="gate-arrow" aria-hidden="true">→</span><div><p className="eyebrow">Step 2 · Candidate</p><h2>What do we want to ship?</h2><select aria-label="Candidate run" value={candidateId} onChange={event => { setCandidateId(event.target.value); setComparison(null) }}><option value="">Choose candidate</option>{completed.map(run => <option key={run.id} value={run.id}>{runLabel(run)}</option>)}</select></div><button className="button primary" disabled={!baselineId || !candidateId || baselineId === candidateId} onClick={compare}>Evaluate release gate</button>{error && <p className="form-error full" role="alert">{error}</p>}</section>
-    {comparison && <><section className={`card release-gate gate-${comparison.gate.decision}`}><div className="gate-verdict"><span>{comparison.gate.decision === 'ready' ? '✓' : comparison.gate.decision === 'blocked' ? '!' : '?'}</span><div><p className="eyebrow">Deterministic release gate</p><h2>{comparison.gate.decision === 'ready' ? 'Ready for this tested scope' : comparison.gate.decision === 'blocked' ? 'Do not ship this candidate' : 'More evidence is required'}</h2><p>{comparison.gate.reasons.join(' · ')}</p></div><StatusBadge value={comparison.gate.decision}/></div><div className="gate-metrics"><div><b>{comparison.gate.fixed}</b><span>Fixed</span></div><div><b>{comparison.gate.preserved}</b><span>Passes preserved</span></div><div><b>{comparison.gate.regressed}</b><span>Regressed</span></div><div><b>{comparison.gate.unresolved}</b><span>Unresolved</span></div></div><p className="micro muted">Decision is limited to policy <code>{comparison.policy_version}</code> and the same {comparison.rows.length}-case suite.</p></section><section className="card"><div className="section-head"><div><p className="eyebrow">Case-by-case proof</p><h2>What changed?</h2></div><span className="scope-chip">Baseline → candidate</span></div><div className="table-scroll"><table><thead><tr><th>Case</th><th>Promise</th><th>Before</th><th>After</th><th>Change</th></tr></thead><tbody>{comparison.gate.changes.map(change => <tr key={change.case_id}><td><code>{change.case_id}</code></td><td>{change.name}</td><td><StatusBadge value={change.before}/></td><td><StatusBadge value={change.after}/></td><td><span className={`change change-${change.classification}`}>{change.classification}</span></td></tr>)}</tbody></table></div></section></>}
+    {comparison && <><section className={`card release-gate gate-${comparison.gate.decision}`}><div className="gate-verdict"><span>{comparison.gate.decision === 'ready' ? '✓' : comparison.gate.decision === 'blocked' ? '!' : '?'}</span><div><p className="eyebrow">Deterministic release gate</p><h2>{comparison.gate.decision === 'ready' ? 'Ready for this tested scope' : comparison.gate.decision === 'blocked' ? 'Do not ship this candidate' : 'More evidence is required'}</h2><p>{comparison.gate.reasons.join(' · ')}</p></div><StatusBadge value={comparison.gate.decision}/></div><div className="gate-metrics"><div><b>{comparison.gate.fixed}</b><span>Fixed</span></div><div><b>{comparison.gate.preserved}</b><span>Passes preserved</span></div><div><b>{comparison.gate.regressed}</b><span>Regressed</span></div><div><b>{comparison.gate.unresolved}</b><span>Unresolved</span></div></div><p className="micro muted">Decision is limited to policy <code>{comparison.policy_version}</code> and the same {comparison.rows.length}-case suite.</p></section><section className="card"><div className="section-head"><div><p className="eyebrow">Case-by-case proof</p><h2>What changed?</h2></div><span className="scope-chip">Baseline → candidate</span></div><div className="table-scroll"><table><thead><tr><th>Case</th><th>Promise</th><th>Before</th><th>After</th><th>Change</th></tr></thead><tbody>{comparison.gate.changes.map(change => <tr key={change.case_id}><td><code>{change.case_id}</code></td><td>{caseLabel(change.name)}</td><td><StatusBadge value={change.before}/></td><td><StatusBadge value={change.after}/></td><td><span className={`change change-${change.classification}`}>{change.classification}</span></td></tr>)}</tbody></table></div></section></>}
   </>
 }
 
@@ -331,7 +394,7 @@ function ReportsView({ runs }: { runs: Run[] }) {
 
 function WorkbenchApp() {
   const [auth, setAuth] = useState<'loading'|'login'|'ready'>('loading')
-  const [view, setView] = useState<View>('runs')
+  const [view, setView] = useState<View>('overview')
   const [targets, setTargets] = useState<Target[]>([])
   const [targetAlias, setTargetAlias] = useState('')
   const [runs, setRuns] = useState<Run[]>([])
@@ -395,6 +458,9 @@ function WorkbenchApp() {
     {workspaceLoading && <section className="workspace-loading" aria-live="polite"><div className="spinner"/><span>Synchronizing policy, targets and evidence…</span></section>}
     {!workspaceLoading && workspaceError && <section className="workspace-recovery card" role="alert"><span className="recovery-icon"><Icon name="alert" size={22}/></span><div><p className="eyebrow">Control API unavailable</p><h1>Workspace data could not be synchronized.</h1><p>{workspaceError}</p><p className="micro">Your session remains open and persisted evidence is unchanged.</p></div><button className="button primary" onClick={() => void loadWorkspace()}>Retry synchronization</button></section>}
     {!workspaceLoading && !workspaceError && <Fragment key={workspaceRevision}>
+      <WorkflowRail view={view} setView={setView}/>
+      {view !== 'overview' && <StageBrief view={view} setView={setView}/>}
+      {view === 'overview' && <MentorOverview setView={setView} runs={runs} targets={targets} capabilities={capabilities}/>}
       {view === 'runs' && <RunsView targets={targets} targetAlias={targetAlias} onTargetChange={alias => void changeTarget(alias)} runs={runs} selectedRun={selectedRun} select={select} refresh={loadRuns} capabilities={capabilities}/>}
       {view === 'discovery' && <DiscoveryView spec={spec}/>}
       {view === 'policy' && <PolicyView policy={policy} spec={spec}/>}

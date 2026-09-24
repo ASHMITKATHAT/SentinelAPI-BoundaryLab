@@ -20,6 +20,10 @@ The Compare workspace now accepts an ordered baseline and release candidate. The
 
 This answers the mentor and buyer question directly: did the security fix close the declared boundary without breaking legitimate product behavior?
 
+## Mentor walkthrough
+
+The authenticated workspace now opens on a mentor-facing overview instead of dropping directly into a dense run screen. It explains the breach in four plain-language moments, exposes the complete feature inventory and links five working stages in order: Discover, Define, Verify, Compare and Handoff. Every stage carries its own mentor question, the proof to point at and a direct next-step action. Fixture identities are presented as business roles so the security model remains understandable without fictional names.
+
 ## Verification gates
 
 | Gate | Result |
@@ -32,7 +36,8 @@ This answers the mentor and buyer question directly: did the security fix close 
 | Discovery browser flow | Passed; 10 operations, 5 candidates and 1 disclosed shadow route |
 | Release gate browser flow | Passed; 4 fixed, 8 preserved, 0 regressed, 0 unresolved |
 | Disconnect and reconnect browser flow | Passed; clear uncertain-mutation message and stale error removed after reconnect |
+| Mentor walkthrough | Passed; Overview and all five guided stages navigated at 569 px without horizontal overflow |
 | Browser console | 0 warnings or errors |
 | Git whitespace check | Passed |
 
-Production bundle output: 0.55 kB HTML, 35.96 kB CSS (7.82 kB gzip) and 271.69 kB JavaScript (83.02 kB gzip). The release gate remains scoped to compatible persisted cases and does not certify behavior outside the declared policy.
+Production bundle output after the mentor walkthrough: 0.55 kB HTML, 42.72 kB CSS (8.84 kB gzip) and 281.04 kB JavaScript (85.61 kB gzip). The release gate remains scoped to compatible persisted cases and does not certify behavior outside the declared policy.
