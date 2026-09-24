@@ -1,8 +1,42 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { Component, FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
 import type { CandidateReview, Capabilities, CaseResult, Comparison, DiscoveryAnalysis, Evidence, Explanation, Report, Run, SpecSummary, Target, Verdict } from './types'
 
 type View = 'runs' | 'discovery' | 'policy' | 'compare' | 'reports'
+
+const viewMeta: Record<View, { index: string; label: string; short: string; icon: IconName }> = {
+  discovery: { index: '01', label: 'API discovery', short: 'Discover', icon: 'radar' },
+  policy: { index: '02', label: 'Policy contract', short: 'Define', icon: 'shield' },
+  runs: { index: '03', label: 'Verification runs', short: 'Verify', icon: 'pulse' },
+  compare: { index: '04', label: 'Repair compare', short: 'Compare', icon: 'compare' },
+  reports: { index: '05', label: 'Evidence handoff', short: 'Handoff', icon: 'report' },
+}
+
+type IconName = 'radar' | 'shield' | 'pulse' | 'compare' | 'report' | 'chevron' | 'refresh' | 'lock' | 'alert'
+
+function Icon({ name, size = 17 }: { name: IconName; size?: number }) {
+  const paths: Record<IconName, ReactNode> = {
+    radar: <><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v2M22 12h-2M12 22v-2M2 12h2M14.2 9.8l4-4"/></>,
+    shield: <><path d="M12 3 19 6v5c0 4.7-2.8 8-7 10-4.2-2-7-5.3-7-10V6l7-3Z"/><path d="m9 12 2 2 4-5"/></>,
+    pulse: <><path d="M3 12h4l2-6 4 12 2-6h6"/></>,
+    compare: <><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></>,
+    report: <><path d="M6 3h9l3 3v15H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></>,
+    chevron: <path d="m9 18 6-6-6-6"/>,
+    refresh: <><path d="M20 6v5h-5M4 18v-5h5"/><path d="M18.5 9A7 7 0 0 0 6 6.5L4 9M5.5 15A7 7 0 0 0 18 17.5l2-2.5"/></>,
+    lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
+    alert: <><path d="M12 3 2.8 20h18.4L12 3Z"/><path d="M12 9v5M12 17h.01"/></>,
+  }
+  return <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>
+}
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  render() {
+    if (!this.state.failed) return this.props.children
+    return <main className="fatal-state"><div className="mark mark-large">B</div><div className="fatal-copy"><p className="eyebrow">Workbench recovery</p><h1>The interface hit an unexpected state.</h1><p>Your persisted runs and evidence are safe. Reload the local console to rebuild the view from the control API.</p><button className="button primary" onClick={() => window.location.reload()}>Reload workbench</button></div></main>
+  }
+}
 
 const verdictLabel: Record<Verdict, string> = {
   pass: 'Pass', violation: 'Violation', inconclusive: 'Inconclusive', skipped: 'Skipped',
@@ -43,28 +77,33 @@ function Login({ onLogin }: { onLogin: () => void }) {
   </main>
 }
 
-function SideNav({ view, setView, logout }: { view: View; setView: (view: View) => void; logout: () => void }) {
-  const items: Array<[View, string, string]> = [
-    ['runs', '01', 'Live runs'], ['discovery', '02', 'Discovery'], ['policy', '03', 'Policy'],
-    ['compare', '04', 'Compare repairs'], ['reports', '05', 'Report handoff'],
-  ]
+function SideNav({ view, setView, logout, activeRuns }: { view: View; setView: (view: View) => void; logout: () => void; activeRuns: number }) {
+  const items: View[] = ['discovery', 'policy', 'runs', 'compare', 'reports']
   return <aside className="sidebar">
-    <div><div className="brand"><div className="mark">B</div><div><strong>BoundaryLab</strong><small>SentinelAPI</small></div></div>
-      <nav aria-label="Product navigation">{items.map(([id, number, label]) =>
+    <div><div className="brand"><div className="mark">B</div><div><strong>BoundaryLab</strong><small>SentinelAPI · v0.3</small></div></div>
+      <p className="nav-section">Release workflow</p>
+      <nav aria-label="Product navigation">{items.map(id =>
         <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)} aria-current={view === id ? 'page' : undefined}>
-          <span>{number}</span>{label}
+          <Icon name={viewMeta[id].icon}/><span className="nav-label"><b>{viewMeta[id].label}</b><small>{viewMeta[id].index} · {viewMeta[id].short}</small></span>{id === 'runs' && activeRuns > 0 && <em>{activeRuns}</em>}
         </button>)}</nav>
     </div>
-    <div className="side-footer"><div className="scope-dot"><i/>Local trusted scope</div><button className="text-button" onClick={logout}>Sign out</button></div>
+    <div className="side-context"><Icon name="lock"/><div><strong>Local trusted scope</strong><span>Loopback control plane</span></div></div>
+    <div className="side-footer"><span>Operator session</span><button className="text-button" onClick={logout}>Sign out</button></div>
   </aside>
+}
+
+function WorkspaceHeader({ view, activeRuns }: { view: View; activeRuns: number }) {
+  return <><header className="topbar"><div className="breadcrumbs"><span>SentinelAPI</span><Icon name="chevron" size={13}/><strong>{viewMeta[view].label}</strong></div><div className="topbar-actions"><span className="control-status"><i/>{activeRuns ? `${activeRuns} run${activeRuns > 1 ? 's' : ''} active` : 'Control plane ready'}</span><span className="policy-pill">Policy <code>invoice-policy-v1</code></span></div></header>
+    <nav className="workflow-rail" aria-label="Release workflow progress">{(['discovery','policy','runs','compare','reports'] as View[]).map((id, index) => <div key={id} className={view === id ? 'current' : ''}><span>{index + 1}</span><b>{viewMeta[id].short}</b></div>)}</nav>
+  </>
 }
 
 function RunList({ runs, selected, select }: { runs: Run[]; selected?: string; select: (run: Run) => void }) {
   return <div className="run-list" aria-label="Recent runs">
-    {runs.length === 0 && <div className="empty-small">No runs yet.</div>}
+    {runs.length === 0 && <div className="empty-small"><Icon name="pulse"/><strong>No verification runs yet</strong><span>Start a disclosed fixture build to create evidence.</span></div>}
     {runs.map(run => <button key={run.id} className={selected === run.id ? 'run-row selected' : 'run-row'} onClick={() => select(run)}>
-      <div><strong>{run.target_alias.replace('demo-', '')}</strong><small>{new Date(run.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} · {run.id.slice(-6)}</small></div>
-      <StatusBadge value={run.assessment || run.state}/>
+      <div className="run-row-main"><span className="run-glyph"><Icon name="pulse" size={15}/></span><span><strong>{run.target_alias.replace('demo-', '')}</strong><small>{new Date(run.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} · {run.id.slice(-6)}</small></span></div>
+      <div className="run-row-end"><StatusBadge value={run.assessment || run.state}/><Icon name="chevron" size={14}/></div>
     </button>)}
   </div>
 }
@@ -79,14 +118,28 @@ function Timeline({ report }: { report: Report }) {
   }
   return <div className="timeline">{picked.map((item, index) =>
     <div className={`timeline-step ${item.status_code && item.status_code >= 400 ? 'denied' : ''}`} key={`${item.evidence_id}-${index}`}>
-      <span className="time">+{item.start_offset_ms} ms</span><i/><strong>{item.operation_id}</strong><small>{item.identity} · HTTP {item.status_code}</small>
+      <span className="time">+{item.start_offset_ms} ms</span><i>{index + 1}</i><strong>{item.operation_id}</strong><small>{item.identity} · HTTP {item.status_code}</small>
     </div>)}</div>
 }
 
 function EvidenceDrawer({ evidence, close }: { evidence: Evidence; close: () => void }) {
+  const closeButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    closeButton.current?.focus()
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+      previousFocus?.focus()
+    }
+  }, [close])
   return <div className="drawer-backdrop" onMouseDown={event => { if (event.currentTarget === event.target) close() }}>
     <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="evidence-title">
-      <div className="drawer-head"><div><p className="eyebrow">Sanitized evidence</p><h2 id="evidence-title">{evidence.operation_id}</h2></div><button className="icon-button" onClick={close} aria-label="Close evidence">×</button></div>
+      <div className="drawer-head"><div><p className="eyebrow">Sanitized evidence</p><h2 id="evidence-title">{evidence.operation_id}</h2></div><button ref={closeButton} className="icon-button" onClick={close} aria-label="Close evidence">×</button></div>
       <dl className="evidence-facts"><div><dt>Identity</dt><dd>{evidence.identity}</dd></div><div><dt>Status</dt><dd>HTTP {evidence.status_code}</dd></div><div><dt>Started</dt><dd>+{evidence.start_offset_ms} ms</dd></div><div><dt>Duration</dt><dd>{evidence.duration_ms} ms</dd></div></dl>
       <h3>Request</h3><pre>{`${evidence.method} ${evidence.path}\n${Object.entries(evidence.request_headers).map(([key,value]) => `${key}: ${value}`).join('\n')}`}</pre>
       <h3>Allowlisted response excerpt</h3><pre>{JSON.stringify(evidence.response_excerpt, null, 2)}</pre>
@@ -134,7 +187,7 @@ function RunDetail({ run, cancel, capabilities }: { run: Run | null; cancel: (id
       <section className="card"><div className="section-head"><div><p className="eyebrow">Observed sequence</p><h3>Follow the permission</h3></div><span className="scope-chip">2,000 ms grace · 200 ms margin</span></div><Timeline report={report}/></section>
       <section className="card"><div className="section-head"><div><p className="eyebrow">Policy acceptance</p><h3>12 required cases</h3></div><span className="muted micro">Cleanup: {report.cleanup_status}</span></div>
         <div className="table-scroll"><table><thead><tr><th>Case</th><th>Permission promise</th><th>Expected</th><th>Observed</th><th>Verdict</th></tr></thead><tbody>
-          {report.cases.map(item => <tr key={item.case_id} className={item.evidence_ids.length ? 'clickable' : ''} onClick={() => openCase(item)}>
+          {report.cases.map(item => <tr key={item.case_id} className={item.evidence_ids.length ? 'clickable' : ''} tabIndex={item.evidence_ids.length ? 0 : undefined} aria-label={item.evidence_ids.length ? `Open evidence for ${item.case_id}: ${item.name}` : undefined} onClick={event => { event.currentTarget.focus(); openCase(item) }} onKeyDown={event => { if (item.evidence_ids.length && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openCase(item) } }}>
             <td><code>{item.case_id}</code></td><td><strong>{item.name}</strong>{item.reason_code && <small>{item.reason_code}</small>}</td><td>{item.expected}</td><td>{item.observed}</td><td><StatusBadge value={item.verdict}/></td>
           </tr>)}</tbody></table></div>
       </section>
@@ -151,9 +204,12 @@ function RunsView({ targets, runs, selectedRun, select, refresh, capabilities }:
   async function start(alias = target) { setBusy(true); setError(''); try { const run = await api.startRun(alias); select(run); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not start run') } finally { setBusy(false) } }
   async function matrix() { setBusy(true); setError(''); try { let first: Run | null = null; for (const item of targets) { const run = await api.startRun(item.alias); first ||= run } if (first) select(first); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not queue matrix') } finally { setBusy(false) } }
   async function cancel(id: string) { try { await api.cancelRun(id); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Cancellation failed') } }
-  return <><header className="page-head"><div><p className="eyebrow">Live authorization workbench</p><h1>Test the promise, not the endpoint.</h1><p>Run a declared sharing policy through real local HTTP targets and inspect the evidence.</p></div><div className="demo-flag"><i/>Synthetic fixture targets</div></header>
-    <section className="launch card"><div className="launch-copy"><span className="step-number">01</span><div><h2>Choose a disclosed implementation</h2><p>Target URLs come from the trusted server registry. This form cannot scan an arbitrary host.</p></div></div><div className="launch-actions"><label htmlFor="target">Target build</label><select id="target" value={target} onChange={e => setTarget(e.target.value)}>{targets.map(item => <option value={item.alias} key={item.alias}>{item.label}</option>)}</select><button className="button primary" onClick={() => start()} disabled={busy}>{busy ? 'Queueing…' : 'Run selected target'}</button><button className="button secondary" onClick={matrix} disabled={busy}>Queue three-build proof</button></div>{error && <p className="form-error full" role="alert">{error}</p>}</section>
-    <div className="workspace-grid"><section className="card recent"><div className="section-head"><div><p className="eyebrow">Persisted locally</p><h3>Recent runs</h3></div><button className="icon-button" onClick={refresh} aria-label="Refresh runs">↻</button></div><RunList runs={runs} selected={selectedRun?.id} select={select}/></section><div className="detail-column"><RunDetail run={selectedRun} cancel={cancel} capabilities={capabilities}/></div></div>
+  const completed = runs.filter(run => run.state === 'completed')
+  const violations = completed.reduce((sum, run) => sum + (run.counts.violation || 0), 0)
+  return <><header className="page-head"><div><p className="eyebrow">Verification / Runtime evidence</p><h1>Test the permission promise.</h1><p>Replay one bounded sharing lifecycle and trace every decision from grant through revoked retrieval.</p></div><div className="demo-flag"><i/>Disclosed fixture scope</div></header>
+    <section className="overview-strip" aria-label="Verification overview"><div><span>Completed runs</span><strong>{completed.length}</strong></div><div className={violations ? 'danger' : ''}><span>Recorded violations</span><strong>{violations}</strong></div><div><span>Required cases</span><strong>12 / run</strong></div><div><span>Evidence mode</span><strong>Redacted + hashed</strong></div></section>
+    <section className="launch card"><div className="launch-copy"><span className="step-number">03</span><div><h2>Start a bounded verification</h2><p>Choose a registered build. Requests stay inside the allowlisted local fixture and hard request limits apply.</p><div className="assurance-row"><span><Icon name="lock" size={13}/>Allowlisted origin</span><span>60 req max</span><span>1 in flight</span></div></div></div><div className="launch-actions"><label htmlFor="target">Implementation under test</label><select id="target" value={target} onChange={e => setTarget(e.target.value)}>{targets.map(item => <option value={item.alias} key={item.alias}>{item.label}</option>)}</select><button className="button primary" onClick={() => start()} disabled={busy}>{busy ? 'Queueing…' : 'Run selected target'}</button><button className="button secondary" onClick={matrix} disabled={busy}>Queue three-build proof</button></div>{error && <p className="form-error full" role="alert">{error}</p>}</section>
+    <div className="workspace-grid"><section className="card recent"><div className="section-head"><div><p className="eyebrow">Evidence index</p><h3>Recent runs</h3></div><button className="icon-button" onClick={refresh} aria-label="Refresh runs"><Icon name="refresh"/></button></div><RunList runs={runs} selected={selectedRun?.id} select={select}/></section><div className="detail-column"><RunDetail run={selectedRun} cancel={cancel} capabilities={capabilities}/></div></div>
   </>
 }
 
@@ -184,8 +240,14 @@ function DiscoveryView({ spec }: { spec: SpecSummary | null }) {
   async function analyze() {
     setBusy(true); setError('')
     try {
-      const document = JSON.parse(specText) as Record<string, unknown>
-      const har = harText.trim() ? JSON.parse(harText) as Record<string, unknown> : null
+      let document: Record<string, unknown>
+      let har: Record<string, unknown> | null = null
+      try { document = JSON.parse(specText) as Record<string, unknown> }
+      catch { throw new Error('OpenAPI JSON is malformed. Fix the highlighted source and analyze again.') }
+      if (harText.trim()) {
+        try { har = JSON.parse(harText) as Record<string, unknown> }
+        catch { throw new Error('HAR JSON is malformed. Fix or remove the traffic sample and analyze again.') }
+      }
       const analysis = await api.analyze(label, document, har)
       setResult(analysis); setReviews([]); setRationales({})
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Discovery analysis failed') }
@@ -203,8 +265,8 @@ function DiscoveryView({ spec }: { spec: SpecSummary | null }) {
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not record the policy decision') }
     finally { setReviewBusy('') }
   }
-  return <><header className="page-head"><div><p className="eyebrow">Spec + traffic intelligence</p><h1>Find the boundary before attacking it.</h1><p>Import OpenAPI and optional HAR traffic. BoundaryLab derives review candidates and identifies observed routes missing from the contract without sending active requests.</p></div><div className="demo-flag"><i/>Passive analysis</div></header>
-    <section className="card discovery-input"><div className="discovery-copy"><span className="step-number">02</span><div><h2>Analyze a real API surface</h2><p>HAR headers, cookies and bodies are never persisted. Candidate rules require human approval before an active adapter can use them.</p></div></div><label>Analysis label<input value={label} maxLength={120} onChange={event => setLabel(event.target.value)}/></label><div className="import-grid"><label>OpenAPI 3.x JSON<input type="file" accept="application/json,.json" onChange={event => loadFile(event.target.files?.[0], 'spec')}/><textarea value={specText} onChange={event => setSpecText(event.target.value)} spellCheck={false}/></label><label>Optional HAR JSON<input type="file" accept="application/json,.har" onChange={event => loadFile(event.target.files?.[0], 'har')}/><textarea value={harText} onChange={event => setHarText(event.target.value)} placeholder="Paste or select a HAR export to detect shadow routes" spellCheck={false}/><button className="text-link" type="button" onClick={loadDemoTraffic}>Load disclosed demo traffic</button></label></div><div className="discovery-submit"><button className="button primary" disabled={busy || !label.trim() || !specText.trim()} onClick={analyze}>{busy ? 'Analyzing…' : harText.trim() ? 'Analyze spec + traffic' : 'Analyze without active traffic'}</button><span className="micro muted">2 MB request cap · 500 paths · 5,000 HAR entries</span></div>{error && <p className="form-error" role="alert">{error}</p>}</section>
+  return <><header className="page-head"><div><p className="eyebrow">Discovery / Passive intelligence</p><h1>Find the boundary before replay.</h1><p>Join the declared OpenAPI surface with observed traffic to surface ownership rules and undocumented routes—without probing a target.</p></div><div className="demo-flag"><i/>Zero active requests</div></header>
+    <section className="card discovery-input"><div className="discovery-copy"><span className="step-number">01</span><div><h2>Build the API boundary map</h2><p>Only route and method metadata survives analysis. HAR headers, cookies and bodies are discarded before persistence.</p></div><div className="input-safety"><Icon name="shield"/><span><strong>Human approval required</strong><small>No candidate enters policy automatically</small></span></div></div><label className="analysis-name">Analysis label<input value={label} maxLength={120} onChange={event => { setLabel(event.target.value); setError('') }}/></label><div className="import-grid"><label className="source-card"><span className="source-title"><b>OpenAPI 3.x</b><em>Required</em></span><span className="source-help">Contract, operations and auth schemes</span><input type="file" accept="application/json,.json" onChange={event => loadFile(event.target.files?.[0], 'spec')}/><textarea value={specText} onChange={event => { setSpecText(event.target.value); setError('') }} spellCheck={false} aria-label="OpenAPI JSON source"/></label><label className="source-card"><span className="source-title"><b>Traffic sample</b><em className="optional">Optional HAR</em></span><span className="source-help">Route diff only; sensitive request data is dropped</span><input type="file" accept="application/json,.har" onChange={event => loadFile(event.target.files?.[0], 'har')}/><textarea value={harText} onChange={event => { setHarText(event.target.value); setError('') }} placeholder="Paste a HAR export to reveal observed shadow routes" spellCheck={false} aria-label="HAR JSON source"/><button className="text-link" type="button" onClick={loadDemoTraffic}>Use disclosed demo traffic</button></label></div><div className="discovery-submit"><button className="button primary" disabled={busy || !label.trim() || !specText.trim()} onClick={analyze}>{busy ? 'Mapping boundary…' : harText.trim() ? 'Analyze contract + traffic' : 'Analyze contract only'}</button><div className="limit-row"><span>2 MB max</span><span>500 paths</span><span>5,000 HAR entries</span></div></div>{error && <p className="form-error" role="alert">{error}</p>}</section>
     {result && <><section className="metrics discovery-metrics"><div><span>Operations</span><b>{result.summary.documented_operations}</b></div><div><span>Ownership candidates</span><b>{result.summary.ownership_candidates}</b></div><div className={result.summary.shadow_operations ? 'metric-danger' : ''}><span>Shadow routes</span><b>{result.summary.shadow_operations}</b></div><div><span>Ledger decisions</span><b>{reviews.length}</b></div></section><section className="discovery-grid"><div className="card"><div className="section-head"><div><p className="eyebrow">Policy candidates</p><h2>Review before replay</h2></div><code>{result.spec.sha256.slice(0,12)}…</code></div>{result.invariant_candidates.length ? <div className="candidate-list">{result.invariant_candidates.map(candidate => {
       const latest = reviews.filter(review => review.candidate_id === candidate.id).at(-1)
       const rationale = rationales[candidate.id] || ''
@@ -247,7 +309,7 @@ function ReportsView({ runs }: { runs: Run[] }) {
   </>
 }
 
-export default function App() {
+function WorkbenchApp() {
   const [auth, setAuth] = useState<'loading'|'login'|'ready'>('loading')
   const [view, setView] = useState<View>('runs')
   const [targets, setTargets] = useState<Target[]>([])
@@ -256,31 +318,47 @@ export default function App() {
   const [policy, setPolicy] = useState<any>(null)
   const [spec, setSpec] = useState<SpecSummary | null>(null)
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
+  const [workspaceLoading, setWorkspaceLoading] = useState(true)
+  const [workspaceError, setWorkspaceError] = useState('')
 
   const loadRuns = useCallback(async () => {
     const list = await api.runs(); setRuns(list)
     if (selectedRun) { const updated = await api.run(selectedRun.id); setSelectedRun(updated) }
   }, [selectedRun?.id])
   const loadWorkspace = useCallback(async () => {
-    const [targetData, runData, policyData, specData, capabilityData] = await Promise.all([api.targets(), api.runs(), api.policy(), api.spec(), api.capabilities()])
-    setTargets(targetData); setRuns(runData); setPolicy(policyData); setSpec(specData); setCapabilities(capabilityData)
-    if (runData[0]) setSelectedRun(await api.run(runData[0].id))
+    setWorkspaceLoading(true); setWorkspaceError('')
+    try {
+      const [targetData, runData, policyData, specData, capabilityData] = await Promise.all([api.targets(), api.runs(), api.policy(), api.spec(), api.capabilities()])
+      setTargets(targetData); setRuns(runData); setPolicy(policyData); setSpec(specData); setCapabilities(capabilityData)
+      if (runData[0]) setSelectedRun(await api.run(runData[0].id))
+    } catch (caught) {
+      setWorkspaceError(caught instanceof Error ? caught.message : 'The local control API did not return a complete workspace.')
+    } finally { setWorkspaceLoading(false) }
   }, [])
   useEffect(() => { api.restoreSession().then(() => setAuth('ready')).catch(() => setAuth('login')) }, [])
-  useEffect(() => { if (auth === 'ready') loadWorkspace().catch(() => setAuth('login')) }, [auth, loadWorkspace])
+  useEffect(() => { if (auth === 'ready') void loadWorkspace() }, [auth, loadWorkspace])
   useEffect(() => { window.scrollTo(0, 0) }, [view])
-  const active = useMemo(() => runs.some(run => ['queued','running'].includes(run.state)), [runs])
+  const activeRuns = useMemo(() => runs.filter(run => ['queued','running'].includes(run.state)).length, [runs])
+  const active = activeRuns > 0
   useEffect(() => { if (!active || auth !== 'ready') return; const timer=window.setInterval(() => loadRuns().catch(()=>undefined),1000); return()=>window.clearInterval(timer) }, [active, auth, loadRuns])
   async function select(run: Run) { setSelectedRun(await api.run(run.id)) }
   async function logout() { await api.logout().catch(()=>undefined); setAuth('login') }
   if (auth === 'loading') return <main className="boot"><div className="mark mark-large">B</div><div className="spinner light-spinner"/><p>Opening local workbench…</p></main>
   if (auth === 'login') return <Login onLogin={() => setAuth('ready')}/>
-  return <div className="app-shell"><SideNav view={view} setView={setView} logout={logout}/><main className="content">
-    <div className="topbar"><span><i/>Live local control plane</span><span>Policy <code>invoice-policy-v1</code></span></div>
-    {view === 'runs' && <RunsView targets={targets} runs={runs} selectedRun={selectedRun} select={select} refresh={loadRuns} capabilities={capabilities}/>}
-    {view === 'discovery' && <DiscoveryView spec={spec}/>}
-    {view === 'policy' && <PolicyView policy={policy} spec={spec}/>}
-    {view === 'compare' && <CompareView runs={runs}/>}
-    {view === 'reports' && <ReportsView runs={runs}/>}
+  return <div className="app-shell"><SideNav view={view} setView={setView} logout={logout} activeRuns={activeRuns}/><main className="content">
+    <WorkspaceHeader view={view} activeRuns={activeRuns}/>
+    {workspaceLoading && <section className="workspace-loading" aria-live="polite"><div className="spinner"/><span>Synchronizing policy, fixtures and evidence…</span></section>}
+    {!workspaceLoading && workspaceError && <section className="workspace-recovery card" role="alert"><span className="recovery-icon"><Icon name="alert" size={22}/></span><div><p className="eyebrow">Control API unavailable</p><h1>Workspace data could not be synchronized.</h1><p>{workspaceError}</p><p className="micro">Your session remains open and persisted evidence is unchanged.</p></div><button className="button primary" onClick={() => void loadWorkspace()}>Retry synchronization</button></section>}
+    {!workspaceLoading && !workspaceError && <>
+      {view === 'runs' && <RunsView targets={targets} runs={runs} selectedRun={selectedRun} select={select} refresh={loadRuns} capabilities={capabilities}/>}
+      {view === 'discovery' && <DiscoveryView spec={spec}/>}
+      {view === 'policy' && <PolicyView policy={policy} spec={spec}/>}
+      {view === 'compare' && <CompareView runs={runs}/>}
+      {view === 'reports' && <ReportsView runs={runs}/>}
+    </>}
   </main></div>
+}
+
+export default function App() {
+  return <AppErrorBoundary><WorkbenchApp/></AppErrorBoundary>
 }

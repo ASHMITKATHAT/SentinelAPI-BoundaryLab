@@ -4,7 +4,7 @@ Open [the interactive prototype](../design/boundarylab-prototype.html). It is a 
 
 ## Visual direction
 
-A calm engineering review desk: light warm background, dark ink, teal action color and sparse red/amber result accents. Use a system sans font for text and monospace only for paths, IDs and request payloads. The primary unit is a permission promise with evidence, not a generic security score card.
+A calm engineering review desk: cool grey canvas, white evidence surfaces, navy navigation and a disciplined red action/failure accent. Use a system sans font for text and monospace only for paths, IDs and request payloads. The primary unit is a permission promise with evidence, not a generic security score card. The implemented benchmark and redesign rationale are recorded in [35_UI_BENCHMARK_AND_REDESIGN.md](35_UI_BENCHMARK_AND_REDESIGN.md).
 
 Design tokens are in [tokens.json](../design/tokens.json). Use a 4 px spacing base, 8/12/16/24/32 px rhythm, 12 px panel radius, 1 px borders and a 1,360 px maximum content width. Body text ≥14 px, controls ≥44 px high, line-height ≥1.45. Severity uses an icon/text label as well as color. Do not encode meaning only in red/green.
 
