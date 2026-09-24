@@ -9,7 +9,7 @@ This is a pattern study, not a visual clone exercise. BoundaryLab keeps its own 
 
 | Product | Strong interaction pattern observed | Risk or drawback to avoid | BoundaryLab decision |
 |---|---|---|---|
-| [Linear](https://linear.app/changelog/page/3) | Calm hierarchy, dim navigation, consistent headers and compact controls | Beautiful density can hide unfamiliar workflows | Dim sidebar plus an explicit five-stage release rail |
+| [Linear](https://linear.app/changelog/page/3) | Calm hierarchy, dim navigation, consistent headers and compact controls | Beautiful density can hide unfamiliar workflows | Dim sidebar plus a single, quiet current-stage header |
 | [Vercel Observability](https://vercel.com/products/observability) | Mission-control summary followed by route-level drill-down | KPI cards without a release decision become decoration | Four operational facts only; every metric points to evidence |
 | [Sentry issue details](https://docs.sentry.io/product/issues/issue-details/) | Issue header, status action, trend and event detail in one hierarchy | Large event payloads can dominate the page | Run question first, sanitized payload only in a drawer |
 | [Datadog App and API Protection](https://docs.datadoghq.com/security/application_security/attack_summary/) | Exposure and attack summary that pivots into traces | Broad security dashboards can drown a narrow decision | Keep the unit of work a permission promise, not a generic score |
@@ -32,8 +32,8 @@ This is a pattern study, not a visual clone exercise. BoundaryLab keeps its own 
 
 ## Patterns selected for BoundaryLab
 
-1. **Persistent orientation.** The shell now exposes product, current task, local control-plane health, locked policy and the five-stage release workflow.
-2. **Progressive disclosure.** A run starts with the release question and four facts. Raw request/response excerpts stay in a focused evidence drawer.
+1. **Persistent orientation.** The shell exposes product, current task, local control-plane health and locked policy once. The former duplicate workflow rail was removed.
+2. **Progressive disclosure.** A run starts with the release question and four facts. Raw OpenAPI/HAR editors are collapsed until requested, and request/response excerpts stay in a focused evidence drawer.
 3. **Decision-shaped density.** Tables use sticky headers, compact rows and status-first scanning. Red is limited to confirmed violations and the primary action.
 4. **Evidence before remediation.** Deterministic case results remain above AI or deterministic repair guidance.
 5. **Safe import clarity.** OpenAPI and HAR inputs explain what is required, what is optional, what is discarded and which hard limits apply.
@@ -43,11 +43,11 @@ This is a pattern study, not a visual clone exercise. BoundaryLab keeps its own 
 
 ## Visual system
 
-- Canvas: cool grey `#f5f6f8`; cards: white.
+- Canvas: cool grey `#f7f8fa`; cards: white.
 - Navigation and code surfaces: navy `#071426` through `#274463`.
 - Primary action and confirmed security failure: red `#b4232b`; softer red surfaces for attention.
 - Neutral borders and supporting text: grey scale; success is a restrained dark green with a text label.
-- Radius: 7–12 px; shadows remain shallow except for modal/drawer layers.
+- Radius: 8–16 px; shadows remain shallow except for modal/drawer layers.
 - Body controls remain at least 42 px; focus rings, text labels and status dots avoid color-only meaning.
 
 ## Verification targets
