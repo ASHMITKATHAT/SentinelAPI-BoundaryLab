@@ -113,3 +113,9 @@ Optional AI remediation uses the Responses API only when `OPENAI_API_KEY` is pre
 ## Production boundary
 
 This is a production-minded **local, single-operator workbench**, suitable for a controlled mentor demonstration. An internet-facing or multi-tenant deployment still requires TLS/SSO, Postgres, isolated runner processes, DNS/IP pinning for remote targets, secrets management, backups, observability, load tests and an independent security review. The UI calls successful results “Pass in scope”; it does not make a broad security certification claim.
+
+## Team & Contributors
+
+- **Ashmit Kathat** ([@ASHMITKATHAT](https://github.com/ASHMITKATHAT))
+- **Abhinav Pandey** ([@abhinavpandey98645-bot](https://github.com/abhinavpandey98645-bot))
+
