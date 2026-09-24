@@ -1,0 +1,54 @@
+# BoundaryLab implementation status
+
+**Verified 24 September 2026.** This record separates working behavior from product plans and production claims.
+
+## Current system
+
+BoundaryLab is a working local, single-operator authorization regression workbench. The React client and FastAPI control plane run on `127.0.0.1:8080`. Three independent synthetic invoice services run on ports 9011–9013. The control worker calls those services through real localhost HTTP connections, persists results in SQLite and returns only evidence produced by the run.
+
+The product currently covers one reviewed permission lifecycle: Alice owns an invoice, Bob receives and later loses a share, and an asynchronous export created during the share is retrieved before and after the declared revocation deadline. Mallory provides the cross-tenant negative case.
+
+## Verified acceptance evidence
+
+| Target build | Pass | Violation | Inconclusive | Requests | Cleanup | Assessment |
+|---|---:|---:|---:|---:|---|---|
+| `invoice-vulnerable` | 8 | 4 | 0 | 26 | Complete | Blocked |
+| `invoice-owner-only` | 7 | 2 | 3 | 21 | Complete | Blocked |
+| `invoice-fixed` | 12 | 0 | 0 | 26 | Complete | Pass in scope |
+
+The live comparison shows why a deny-everyone repair is not acceptable. It prevents Bob's valid shared-detail and export flows, which produces two functional policy violations and makes three dependent cases inconclusive. The correct repair preserves those allowed paths and denies retrieval after revocation.
+
+Automated verification covers scenario verdicts, transport bounds and redaction, hashed sessions, restart recovery, queue cancellation, CSRF/Origin enforcement, trusted target selection and safe report rendering. The frontend passes TypeScript checking and a production Vite build. `tools/validate_pack.py` validates contracts, schemas, required cases, expected fixture counts and local documentation links.
+
+## Runtime and evidence controls
+
+- Target origins are selected from a server-owned registry; the browser cannot submit an arbitrary URL.
+- HTTP redirects and proxy environment variables are disabled. Concurrency, request rate, total request count and decoded response bytes are bounded.
+- Cleanup capacity is reserved even after the main request budget is used.
+- Authorization values and unrestricted bodies are removed before evidence persistence.
+- Sessions are random opaque values stored only as SHA-256 hashes. Cookies are HTTP-only and same-site strict; mutations require CSRF and Origin validation.
+- SQLite uses WAL mode and transactional queue claiming. Running jobs become interrupted after an unclean restart rather than being presented as complete.
+- Reports include the build ID, policy version, case denominator, incomplete state and cleanup status. HTML output escapes target-derived values and is downloaded with a restrictive CSP.
+
+## Honest production boundary
+
+The system is production-minded for a controlled local demonstration. It has not passed the gates for a public, multi-tenant service. Before an external deployment, the team must add:
+
+1. TLS termination, SSO/RBAC and managed secret rotation.
+2. Postgres migrations and backups instead of a local SQLite file.
+3. Isolated runner processes or containers with egress allowlists, DNS resolution pinning and per-tenant quotas.
+4. Structured logs, metrics, traces, alerting and audited data-retention deletion.
+5. Load, soak, browser end-to-end and disaster-recovery tests in the deployment environment.
+6. Dependency/SBOM scanning, threat-model review and an independent security assessment.
+
+Until those gates are complete, describe BoundaryLab as a working local pilot or hackathon MVP. Describe a successful scan as **pass in scope**, never as proof that the target is secure in general.
+
+## Mentor demonstration path
+
+1. Open the policy screen and point to the 2,000 ms revocation promise.
+2. Queue the three-build proof from the live-runs screen.
+3. Open vulnerable evidence for C02, C03, C06 and C10.
+4. Compare all three runs to show the leak, the broken owner-only repair and the correct repair.
+5. Export the fixed HTML report and explain its tested-scope boundary.
+
+The entire path uses persisted live-run data. The older file at `design/boundarylab-prototype.html` remains only a labelled design reference.

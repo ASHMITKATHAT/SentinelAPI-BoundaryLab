@@ -37,3 +37,9 @@ build/
 coverage/
 .next/
 out/
+
+# BoundaryLab runtime state
+var/
+*.db
+*.db-shm
+*.db-wal

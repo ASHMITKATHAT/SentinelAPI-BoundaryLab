@@ -31,6 +31,7 @@ class Operation:
 OPERATIONS: dict[str, Operation] = {
     "health": Operation("GET", "/healthz", ("/build_id", "/fixture_semantics_version")),
     "getMe": Operation("GET", "/v1/me"),
+    "listInvoices": Operation("GET", "/v1/invoices", ()),
     "getInvoice": Operation("GET", "/v1/invoices/{invoice_id}", ("/id", "/content_marker", "/internal_bank_ref", "/code")),
     "getInvoicePreview": Operation("GET", "/v1/invoices/{invoice_id}/preview"),
     "grantShare": Operation("POST", "/v1/invoices/{invoice_id}/shares"),
@@ -68,7 +69,14 @@ class ScopedTransport:
     fixed-origin, fixed-operation client suitable for the local ASGI fixture.
     """
 
-    def __init__(self, client: httpx.AsyncClient, *, base_url: str, limits: TransportLimits | None = None):
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        base_url: str,
+        limits: TransportLimits | None = None,
+        cancel_event: asyncio.Event | None = None,
+    ):
         parsed = urlsplit(base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.path not in {"", "/"}:
             raise ValueError("base_url must be an HTTP(S) origin without a path")
@@ -80,6 +88,7 @@ class ScopedTransport:
         self._started = time.monotonic()
         self._last_started = 0.0
         self._lock = asyncio.Lock()
+        self._cancel_event = cancel_event
 
     async def request(
         self,
@@ -91,6 +100,8 @@ class ScopedTransport:
         json_body: dict[str, Any] | None = None,
         cleanup: bool = False,
     ) -> ResponseRecord:
+        if not cleanup and self._cancel_event and self._cancel_event.is_set():
+            raise asyncio.CancelledError("run cancellation requested")
         if operation_id not in OPERATIONS:
             raise ScopeViolation(f"operation is not approved: {operation_id}")
         operation = OPERATIONS[operation_id]

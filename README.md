@@ -1,17 +1,55 @@
-# SentinelAPI BoundaryLab — AmiHacks build pack
+# SentinelAPI BoundaryLab — working AmiHacks system
 
-**PS3 is locked by the team. Prepared 24 September 2026 for 1–2 developers and a two-day build.**
+**PS3 is locked by the team. Built for 1–2 developers and a two-day competition sprint.**
 
-**Status: researched specifications, contracts, fixtures and an interactive design prototype. The scanner application has not been implemented or tested.** Proposed performance numbers and prices are targets or hypotheses, not achieved results. The prototype uses synthetic evidence.
+**Status: the complete local vertical slice is implemented and tested.** It runs a React workbench, a FastAPI control plane, a durable SQLite queue and three independent HTTP fixture builds. It produces redacted evidence, compares repairs and exports mentor-ready HTML or JSON artifacts. Market sizes, performance targets and prices in the strategy documents remain hypotheses until externally validated.
 
 BoundaryLab asks: **after access is revoked, can a user still retrieve a previously queued export—and does the fix preserve legitimate access?** It combines ordinary object/field authorization checks with one complete permission-lifecycle test. The product name is provisional; trademark availability has not been checked.
 
-## Start here
+## Run the mentor demo
+
+Prerequisites: Python 3.12+ and Node.js 20.19+ (or 22.12+).
+
+```powershell
+python -m venv .venv
+& '.\.venv\Scripts\python.exe' -m pip install -e '.\apps\service[dev]'
+Push-Location apps/web
+npm ci
+npm run build
+Pop-Location
+& '.\.venv\Scripts\python.exe' -m boundarylab.devserver
+```
+
+Open `http://127.0.0.1:8080` and enter the bootstrap secret printed by the server. Click **Queue three-build proof**, then show the live evidence, policy, repair comparison and report handoff screens. Runtime state survives a browser refresh and service restart in `var/boundarylab.db`.
+
+The expected disclosed demo matrix is:
+
+| Build | Pass | Violations | Inconclusive | Assessment |
+|---|---:|---:|---:|---|
+| Vulnerable | 8 | 4 | 0 | Blocked |
+| Owner-only repair | 7 | 2 | 3 | Blocked |
+| Correct repair | 12 | 0 | 0 | Pass in scope |
+
+The owner-only build matters: it closes access too aggressively and breaks legitimate collaborator behavior. BoundaryLab therefore demonstrates both security and product-preservation checks.
+
+## What is implemented
+
+- A declared 12-case invoice sharing policy, including post-revocation export retrieval.
+- Real localhost HTTP traffic to three separately bound target services; verdicts do not read fixture variant names.
+- A trusted target registry, redirect blocking, one in-flight request, rate/request/response limits and cleanup reserve.
+- Opaque hashed sessions, strict cookies, CSRF and Origin checks, Trusted Host enforcement and security headers.
+- A durable SQLite WAL queue, restart recovery, cancellation, run events, reports and artifact hashes.
+- Evidence redaction and response-field allowlisting before persistence.
+- A responsive React interface using navy blue, red shades, grey and white, with accessible labels and reduced-motion handling.
+
+See [implementation status](docs/32_IMPLEMENTATION_STATUS.md) for verified behavior and the remaining hosted-production gates.
+
+## Start with the product pack
 
 1. Read the [master brief](docs/29_PROJECT_MASTER_BRIEF.md) and [winning strategy](docs/05_WINNING_STRATEGY.md).
 2. Build against the [PRD](docs/06_PRODUCT_PRD.md), [TRD](docs/07_TECHNICAL_TRD.md), [architecture](docs/08_SYSTEM_ARCHITECTURE.md) and [contracts](docs/13_API_CONTRACTS.md).
-3. Open [the interactive UI prototype](design/boundarylab-prototype.html) in a browser; read the [UI/UX specification](docs/10_UI_UX_DESIGN.md).
-4. Follow the [two-day plan](docs/17_IMPLEMENTATION_PHASES.md) and [task breakdown](docs/18_TASK_BREAKDOWN.md).
+3. Review the [UI/UX specification](docs/10_UI_UX_DESIGN.md); the older [interactive prototype](design/boundarylab-prototype.html) remains a clearly labelled synthetic design reference.
+4. Review the [two-day plan](docs/17_IMPLEMENTATION_PHASES.md), [task breakdown](docs/18_TASK_BREAKDOWN.md) and [implemented system](docs/32_IMPLEMENTATION_STATUS.md).
 5. Rehearse the [live demo](docs/20_DEMO_PLAN.md), [pitch](docs/21_PITCH_STRATEGY.md), [judge questions](docs/22_JUDGE_QA.md) and [mentor pack](docs/27_MENTOR_REVIEW_PACK.md).
 
 ## Product decision
@@ -30,11 +68,23 @@ We do not claim that multi-user tests, evidence, CI, authorization matrices or t
 | Business | [26 business model](docs/26_BUSINESS_MODEL.md), [24 roadmap](docs/24_FUTURE_ROADMAP.md), [00 executive summary](docs/00_EXECUTIVE_SUMMARY.md) |
 | Machine-readable handoff | [control API](contracts/control-api.openapi.json), [demo API](contracts/demo-api.openapi.json), [policy schema](contracts/policy.schema.json), [example policy](examples/invoice-policy.json), [fixture manifest](examples/fixture-manifest.json), [evaluation cases](examples/evaluation-cases.json), [design tokens](design/tokens.json) |
 | Implementation accountability | [30 requirement traceability](docs/30_REQUIREMENTS_TRACEABILITY.md), [artifact checks](docs/31_ARTIFACT_VALIDATION.md) |
+| Working system status | [32 implementation status](docs/32_IMPLEMENTATION_STATUS.md), [service runbook](apps/service/README.md) |
 
 `docs/HACKATHON_SELECTION.md` and `docs/AMIHACKS_MARKET_AND_BUSINESS_ANALYSIS.md` preserve earlier research. Their earlier PS1 selection is superseded. This pack's team size, PS3 selection and scope are authoritative.
 
-## What “working” means at submission
+## Verification
 
-A fresh local setup starts the actual application, imports the bundled OpenAPI JSON, checks identity/fixture preconditions, runs real HTTP requests against the seeded targets, persists redacted evidence, compares actual runs and exports a report. Restarting the application must preserve reports. Changing a target response must change the result. No button may silently substitute the design prototype's example evidence.
+```powershell
+Set-Location apps/service
+& '..\..\.venv\Scripts\python.exe' -m pytest -q -p no:cacheprovider
+Set-Location ../web
+npm run build
+Set-Location ../..
+& '.\.venv\Scripts\python.exe' tools/validate_pack.py
+```
 
-Two developers target this complete local MVP. A solo developer targets the same narrow security workflow with simpler forms and fewer report formats. Hosted SaaS, automatic patching, arbitrary-target pentesting, billing and broad protocol support are later work. See the explicit production gates before calling the product production ready.
+The application imports the bundled contract, runs real HTTP requests against seeded targets, persists redacted evidence, compares actual runs and exports reports. Changing a target response changes the verdict. The working UI never substitutes the prototype's example evidence.
+
+## Production boundary
+
+This is a production-minded **local, single-operator workbench**, suitable for a controlled mentor demonstration. An internet-facing or multi-tenant deployment still requires TLS/SSO, Postgres, isolated runner processes, DNS/IP pinning for remote targets, secrets management, backups, observability, load tests and an independent security review. The UI calls successful results “Pass in scope”; it does not make a broad security certification claim.
