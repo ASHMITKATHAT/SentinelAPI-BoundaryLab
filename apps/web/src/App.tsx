@@ -1,5 +1,6 @@
 import { Component, FormEvent, Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { api, getApiStatus, subscribeApiStatus } from './api'
+import { ApiError } from './http'
 import type { CandidateReview, Capabilities, CaseResult, Comparison, DiscoveryAnalysis, Evidence, Explanation, PolicySummary, Report, Run, SpecSummary, Target, Verdict } from './types'
 
 type View = 'overview' | 'runs' | 'discovery' | 'policy' | 'compare' | 'reports'
@@ -72,9 +73,17 @@ function Login({ onLogin }: { onLogin: () => void }) {
   const [secret, setSecret] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [showSecret, setShowSecret] = useState(false)
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError('')
-    try { await api.login(secret); onLogin() } catch (caught) { setError(caught instanceof Error ? caught.message : 'Login failed') }
+    const normalizedSecret = secret.trim()
+    if (normalizedSecret.length < 16) { setError('Paste only the bootstrap secret. It must contain at least 16 characters.'); setBusy(false); return }
+    try { await Promise.all([api.login(normalizedSecret), new Promise(resolve => window.setTimeout(resolve, 500))]); onLogin() }
+    catch (caught) {
+      setError(caught instanceof ApiError && caught.status === 401
+        ? 'Secret rejected by this running server. Copy the exact value after “Bootstrap secret” without bullets, backticks or extra spaces.'
+        : caught instanceof Error ? caught.message : 'Login failed')
+    }
     finally { setBusy(false) }
   }
   return <main className="login-shell">
@@ -87,11 +96,12 @@ function Login({ onLogin }: { onLogin: () => void }) {
     <section className="login-card">
       <p className="eyebrow">Local operator access</p><h2>Open the workbench</h2>
       <p className="muted">Enter the one-time secret printed by the local server. The secret stays in this request and is never stored by the browser.</p>
-      <form onSubmit={submit}>
+      <form onSubmit={submit} aria-busy={busy}>
         <label htmlFor="secret">Bootstrap secret</label>
-        <input id="secret" type="password" autoComplete="current-password" minLength={16} required value={secret} onChange={e => setSecret(e.target.value)} />
+        <div className="secret-field"><input id="secret" type={showSecret ? 'text' : 'password'} autoComplete="current-password" minLength={16} required disabled={busy} value={secret} onChange={e => setSecret(e.target.value)} /><button type="button" disabled={busy} onClick={() => setShowSecret(current => !current)} aria-label={showSecret ? 'Hide secret value' : 'Reveal secret value'}>{showSecret ? 'Hide' : 'Show'}</button></div>
         {error && <p className="form-error" role="alert">{error}</p>}
-        <button className="button primary wide" disabled={busy}>{busy ? 'Checking…' : 'Enter BoundaryLab'}</button>
+        {busy && <div className="login-progress" role="status" aria-live="polite"><div className="spinner"/><div><strong>Creating secure local session…</strong><span>Checking the running server, then loading targets, policy and saved evidence.</span><div className="loading-track"><i/></div></div></div>}
+        <button className="button primary wide" disabled={busy}>{busy ? 'Connecting to BoundaryLab…' : 'Enter BoundaryLab'}</button>
       </form>
       <p className="micro">Local single-operator profile · bound to 127.0.0.1</p>
     </section>
@@ -265,18 +275,21 @@ function RunDetail({ run, cancel, capabilities }: { run: Run | null; cancel: (id
 function RunsView({ targets, targetAlias, onTargetChange, runs, selectedRun, select, refresh, capabilities }: { targets: Target[]; targetAlias: string; onTargetChange: (alias: string) => void; runs: Run[]; selectedRun: Run | null; select: (run: Run) => Promise<void>; refresh: () => Promise<void>; capabilities: Capabilities | null }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [activity, setActivity] = useState('')
   const selectedTarget = targets.find(item => item.alias === targetAlias) || null
   const labTargets = targets.filter(item => item.synthetic_fixture && item.ready)
-  async function start(alias: string) { setBusy(true); setError(''); try { const run = await api.startRun(alias); await select(run); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not start run') } finally { setBusy(false) } }
-  async function matrix() { setBusy(true); setError(''); try { let first: Run | null = null; for (const item of labTargets) { const run = await api.startRun(item.alias); first ||= run } if (first) await select(first); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not queue lab matrix') } finally { setBusy(false) } }
+  async function start(alias: string) { setBusy(true); setError(''); setActivity(`Creating a bounded run for ${alias.replace('demo-','')}…`); try { const run = await api.startRun(alias); setActivity('Run accepted. Restoring its live state…'); await select(run); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not start run') } finally { setBusy(false); setActivity('') } }
+  async function matrix() { setBusy(true); setError(''); try { let first: Run | null = null; for (const [index, item] of labTargets.entries()) { setActivity(`Queueing build ${index + 1} of ${labTargets.length}: ${item.label}`); const run = await api.startRun(item.alias); first ||= run } setActivity(`${labTargets.length} builds queued. The safe worker will execute them one at a time.`); if (first) await select(first); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not queue lab matrix') } finally { setBusy(false); setActivity('') } }
   async function cancel(id: string) { try { await api.cancelRun(id); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Cancellation failed') } }
   async function refreshRuns() { setError(''); try { await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not refresh runs') } }
   const completed = runs.filter(run => run.state === 'completed')
+  const activeItems = runs.filter(run => ['queued','running'].includes(run.state))
   const violations = completed.reduce((sum, run) => sum + (run.counts.violation || 0), 0)
   const realMode = selectedTarget?.mode === 'real_read_probe'
   const noTargets = targets.length === 0
   return <><header className="page-head"><div><p className="eyebrow">Runtime verification</p><h1>{noTargets ? 'Connect a target to begin.' : realMode ? 'Test a real access boundary.' : 'Prove access stays revoked.'}</h1><p>{noTargets ? 'Active requests remain disabled until a reviewed staging registry or explicit lab mode is loaded.' : realMode ? 'Send one bounded GET per reviewed identity and keep only redacted proof.' : 'Replay the disclosed sharing lifecycle and see exactly where the permission boundary holds or breaks.'}</p></div><div className="demo-flag"><i/>{realMode ? 'Authorized staging' : targets.length ? 'Disclosed lab' : 'No target configured'}</div></header>
     <section className="overview-strip" aria-label="Verification overview"><div><span>Completed runs</span><strong>{completed.length}</strong></div><div className={violations ? 'danger' : ''}><span>Recorded violations</span><strong>{violations}</strong></div><div><span>Required cases</span><strong>{selectedTarget?.case_count || 0} / run</strong></div><div><span>Evidence mode</span><strong>Redacted + hashed</strong></div></section>
+    {(busy || activeItems.length > 0) && <section className="run-progress card" role="status" aria-live="polite"><div className="spinner"/><div><p className="eyebrow">Live verification progress</p><h2>{activity || `${activeItems.length} run${activeItems.length === 1 ? '' : 's'} still processing`}</h2><p>{activeItems.length > 0 ? 'One bounded worker executes requests at a time. The page refreshes automatically and evidence is persisted after every run.' : 'Preparing the trusted target and queue entry. No arbitrary destination or browser credential can be added here.'}</p><div className="loading-track"><i/></div><div className="active-run-chips">{activeItems.map(run => <span key={run.id}><b>{run.target_alias.replace('demo-','')}</b> · {run.state}</span>)}</div></div></section>}
     {targets.length === 0 ? <section className="card target-setup"><span className="setup-icon"><Icon name="lock" size={22}/></span><div><p className="eyebrow">Active testing disabled by default</p><h2>Connect an authorized staging target</h2><p>Start BoundaryLab with a reviewed target registry. Real mode accepts a fixed GET operation on numeric loopback only, so use a local service or an SSH-forwarded staging port. Tokens, resource IDs and proof markers come from environment references and are never accepted from the browser.</p><code>python -m boundarylab.devserver --target-config .\targets\registry.json</code></div></section> :
     <section className="launch card"><div className="launch-copy"><div><h2>Run a verification</h2><p>{realMode ? `Fixed read probe through ${selectedTarget?.origin}` : 'Choose a disclosed lab build. Requests remain inside the local fixture.'}</p><div className="assurance-row"><span><Icon name="lock" size={13}/>Allowlisted</span><span>{selectedTarget?.limits.requests || 0} requests max</span><span>1 at a time</span><span>No redirects</span></div></div></div><div className="launch-actions"><label htmlFor="target">Target to test</label><select id="target" value={targetAlias} onChange={e => onTargetChange(e.target.value)}>{targets.map(item => <option value={item.alias} key={item.alias} disabled={!item.ready}>{item.label}{item.ready ? '' : ' · missing environment'}</option>)}</select><button className="button primary" onClick={() => selectedTarget && start(selectedTarget.alias)} disabled={busy || !selectedTarget?.ready}>{busy ? 'Queueing…' : 'Run verification'}</button>{labTargets.length > 1 && <button className="button secondary" onClick={matrix} disabled={busy}>Run lab matrix</button>}</div>{selectedTarget && !selectedTarget.ready && <p className="form-error full" role="alert">Missing runtime environment references: {selectedTarget.missing_environment.join(', ')}</p>}{error && <p className="form-error full" role="alert">{error}</p>}</section>}
     <div className="workspace-grid"><section className="card recent"><div className="section-head"><div><p className="eyebrow">Evidence index</p><h3>Recent runs</h3></div><button className="icon-button" onClick={() => void refreshRuns()} aria-label="Refresh runs"><Icon name="refresh"/></button></div><RunList runs={runs} selected={selectedRun?.id} select={select}/></section><div className="detail-column"><RunDetail run={selectedRun} cancel={cancel} capabilities={capabilities}/></div></div>
@@ -455,7 +468,7 @@ function WorkbenchApp() {
   return <div className="app-shell"><SideNav view={view} setView={setView} logout={logout} activeRuns={activeRuns}/><main className="content">
     <WorkspaceHeader view={view} activeRuns={activeRuns} policyLabel={String(policy?.document.scenario || 'no-active-policy')} connected={apiStatus.connection !== 'offline'}/>
     {apiStatus.connection === 'offline' && <section className="connection-banner" role="alert"><Icon name="alert"/><div><strong>Local server disconnected</strong><span>Saved browser content may still be visible, but actions need the BoundaryLab service on port 8080.</span></div><button className="button secondary compact" onClick={() => void reconnect()}>Reconnect</button></section>}
-    {workspaceLoading && <section className="workspace-loading" aria-live="polite"><div className="spinner"/><span>Synchronizing policy, targets and evidence…</span></section>}
+    {workspaceLoading && <section className="workspace-loading" aria-live="polite" aria-busy="true"><div className="spinner"/><div><strong>Opening the authenticated workspace…</strong><span>Loading trusted targets, policy contracts and persisted evidence.</span><div className="loading-track"><i/></div></div></section>}
     {!workspaceLoading && workspaceError && <section className="workspace-recovery card" role="alert"><span className="recovery-icon"><Icon name="alert" size={22}/></span><div><p className="eyebrow">Control API unavailable</p><h1>Workspace data could not be synchronized.</h1><p>{workspaceError}</p><p className="micro">Your session remains open and persisted evidence is unchanged.</p></div><button className="button primary" onClick={() => void loadWorkspace()}>Retry synchronization</button></section>}
     {!workspaceLoading && !workspaceError && <Fragment key={workspaceRevision}>
       <WorkflowRail view={view} setView={setView}/>

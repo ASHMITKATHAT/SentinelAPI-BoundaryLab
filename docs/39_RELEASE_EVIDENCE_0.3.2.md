@@ -8,6 +8,8 @@ A browser tab could remain visible after the local service stopped. The next Dis
 
 Version 0.3.2 adds a persistent Windows launcher with an explicit health wait and connection-aware browser behavior. Network failure, timeout, session expiry, validation rejection and an unexpected proxy response now have separate messages. The interface exposes an offline banner and reconnect action. Mutation requests are not automatically replayed after uncertain network failures.
 
+The login now trims accidental surrounding whitespace, keeps a visible progress panel on screen while the local session is created and explains an incorrect secret as a mismatch with the currently running server. Verification actions expose queue creation, active build names and queued/running state in a persistent progress panel until the worker finishes.
+
 ## New release gate
 
 The Compare workspace now accepts an ordered baseline and release candidate. The server uses only persisted, compatible case evidence and returns:
@@ -37,7 +39,9 @@ The authenticated workspace now opens on a mentor-facing overview instead of dro
 | Release gate browser flow | Passed; 4 fixed, 8 preserved, 0 regressed, 0 unresolved |
 | Disconnect and reconnect browser flow | Passed; clear uncertain-mutation message and stale error removed after reconnect |
 | Mentor walkthrough | Passed; Overview and all five guided stages navigated at 569 px without horizontal overflow |
+| Login recovery | Passed; incorrect secret explained, surrounding whitespace normalized and progress visibly rendered |
+| Verification progress | Passed; fixed build shown from queue creation through running state to pass-in-scope completion |
 | Browser console | 0 warnings or errors |
 | Git whitespace check | Passed |
 
-Production bundle output after the mentor walkthrough: 0.55 kB HTML, 42.72 kB CSS (8.84 kB gzip) and 281.04 kB JavaScript (85.61 kB gzip). The release gate remains scoped to compatible persisted cases and does not certify behavior outside the declared policy.
+Production bundle output after the progress improvements: 0.55 kB HTML, 44.81 kB CSS (9.24 kB gzip) and 283.45 kB JavaScript (86.32 kB gzip). The release gate remains scoped to compatible persisted cases and does not certify behavior outside the declared policy.

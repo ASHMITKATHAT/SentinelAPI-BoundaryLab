@@ -49,7 +49,7 @@ The owner-only build matters: it closes access too aggressively and breaks legit
 - A loopback-only CI gate with configurable failure conditions and a GitHub Actions workflow that runs the fixed build through real sockets.
 - A fail-closed real-target mode for a reviewed OpenAPI-bound `GET`, multiple environment-backed identities, marker proof and identity-specific forbidden fields.
 - A deterministic release gate that compares an ordered baseline and candidate, then explains fixed controls, preserved product behavior, regressions and missing evidence.
-- Connection-aware UI errors, session-expiry recovery, request timeouts and a persistent local launcher with a health check.
+- Connection-aware UI errors, session-expiry recovery, request timeouts, explicit login/run progress and a persistent local launcher with a health check.
 - A mentor-first product overview and persistent stage guide that make discovery, policy, runtime proof, remediation, release comparison, reports, CI and real-target safeguards visible without relying on a separate explanation.
 
 ## Run the hardened local container
