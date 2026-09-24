@@ -155,6 +155,8 @@ schemas = {
     'Session': obj({'operator': STR, 'csrf_token': STR, 'expires_in_seconds': {'type':'integer','minimum':1}}),
     'RestoredSession': obj({'operator': STR, 'authenticated': BOOL, 'csrf_token': STR}),
     'Target': obj({'alias':STR, 'label':STR, 'origin':STR, 'synthetic_fixture':BOOL,
+                   'mode':{'enum':['temporal_lab','real_read_probe']}, 'ready':BOOL,
+                   'missing_environment':arr(STR), 'case_count':INT,
                    'limits':obj({'requests':INT,'requests_per_second':INT,'in_flight':INT,'response_bytes':INT})}),
     'SpecImport': obj({'project_id':STR, 'document': {'type':'object','additionalProperties':True}}),
     'OperationCoverage': obj({'operation_id':STR, 'status': {'enum':['supported','unsupported','not_selected']}, 'reason':STR}),
@@ -212,11 +214,14 @@ schemas = {
     'Explanation': {'type':'object','additionalProperties':True,
                     'required':['id','run_id','mode','provider_status','summary','risk','root_causes',
                                 'remediation_steps','regression_checks','patch_outline','limitations']},
-    'Capabilities': {'type':'object','additionalProperties':True,'required':['discovery','remediation']}}
+    'Capabilities': {'type':'object','additionalProperties':True,
+                     'properties':{'runtime':obj({'configured_targets':INT,'real_targets':INT,'lab_targets':INT,
+                                                  'remote_network':STR})},
+                     'required':['discovery','runtime','remediation']}}
 schemas['PolicyDocument'].pop('$id', None)
 schemas['PolicyDocument'].pop('$schema', None)
 
-control = {'openapi':'3.1.0', 'info':{'title':'SentinelAPI BoundaryLab control API','version':'0.3.0'},
+control = {'openapi':'3.1.0', 'info':{'title':'SentinelAPI BoundaryLab control API','version':'0.3.1'},
            'servers':[{'url':'http://127.0.0.1:8080/api/v1','description':'Implemented local single-operator control plane'}],
            'security':[{'OperatorSession':[]}], 'paths':{},
            'components':{'securitySchemes':{'OperatorSession':{'type':'apiKey','in':'cookie','name':'boundarylab_session'}},'schemas':schemas}}
@@ -244,8 +249,10 @@ add_control('/session','get','getSession','Restore an authenticated local sessio
 add_control('/session','delete','deleteSession','Invalidate session',status='204')
 add_control('/targets','get','listTargets','Trusted configured targets',arr(ref('Target')))
 add_control('/capabilities','get','getCapabilities','Runtime discovery and remediation capability disclosure',ref('Capabilities'))
-add_control('/policy','get','getPolicy','Reviewed invoice permission policy and exact hash',{'type':'object','additionalProperties':True})
-add_control('/spec','get','getSpecification','Bundled target contract and operation inventory',{'type':'object','additionalProperties':True})
+op=add_control('/policy','get','getPolicy','Reviewed permission policy and exact hash for one configured target',{'type':'object','additionalProperties':True})
+op['parameters']=[{'name':'target_alias','in':'query','required':False,'schema':{**STR,'minLength':1}}]
+op=add_control('/spec','get','getSpecification','Target-bound contract and operation inventory',{'type':'object','additionalProperties':True})
+op['parameters']=[{'name':'target_alias','in':'query','required':False,'schema':{**STR,'minLength':1}}]
 add_control('/discovery/analyses','post','createDiscoveryAnalysis','Passively analyze OpenAPI plus optional HAR; 2 MB cap; no external refs',ref('DiscoveryAnalysis'),ref('DiscoveryRequest'),'201')
 op=add_control('/discovery/analyses','get','listDiscoveryAnalyses','List persisted passive analyses',arr(ref('DiscoveryAnalysis')))
 op['parameters']=[{'name':'limit','in':'query','schema':{'type':'integer','minimum':1,'maximum':50,'default':20}}]

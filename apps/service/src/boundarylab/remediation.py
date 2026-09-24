@@ -57,6 +57,36 @@ GUARDS = {
         "The owner could not complete the independent export workflow.",
         "Preserve the owner path while tightening collaborator and revoked-relation checks.",
     ),
+    "LEGITIMATE_ACCESS_DENIED": (
+        "authorization_regression",
+        "A configured legitimate identity could not retrieve the protected resource.",
+        "Restore the intended role/object relation and keep this allowed identity as a positive regression control.",
+    ),
+    "RESTRICTED_FIELD_EXPOSED": (
+        "property_authorization",
+        "The response included a field forbidden for this configured identity.",
+        "Apply an identity-specific response DTO or field policy before serializing the resource.",
+    ),
+    "PROTECTED_RESOURCE_EXPOSED": (
+        "object_authorization",
+        "A configured denied identity received the protected resource marker.",
+        "Authorize the object lookup using the current identity, tenant and relationship before serialization.",
+    ),
+    "MARKER_NOT_VERIFIED": (
+        "incomplete_evidence",
+        "The allowed response did not provide the configured proof marker.",
+        "Verify the resource ID, marker pointer and marker value against a stable authorized staging fixture.",
+    ),
+    "UNEXPECTED_RESPONSE": (
+        "incomplete_evidence",
+        "The denied identity returned neither an approved deny status nor protected proof.",
+        "Review the endpoint's deny contract and update the approved status policy only when product intent is clear.",
+    ),
+    "RUNNER_STOPPED": (
+        "execution_failure",
+        "The bounded probe stopped before all required identities produced evidence.",
+        "Repair the earliest transport or configuration failure and rerun the complete identity set.",
+    ),
 }
 
 
@@ -96,18 +126,31 @@ def deterministic_triage(report: dict[str, Any]) -> dict[str, Any]:
     steps = list(dict.fromkeys(cause["recommended_guard"] for cause in causes))
     if not steps:
         steps = ["Keep the same policy and dual-identity suite as a required CI regression gate."]
-    regression_checks = [
-        "Re-run the same build with owner, active collaborator, revoked collaborator and cross-tenant identities.",
-        "Require both protected-marker denial and legitimate-use success; status code alone is insufficient.",
-        "Verify asynchronous export retrieval after the full revocation grace period.",
-    ]
-    patch_outline = (
-        "# Framework-neutral guard order\n"
-        "resource = repository.find(resource_id, tenant_id=current_user.tenant_id)\n"
-        "require(resource.owner_id == current_user.id or resource.has_active_share(current_user.id))\n"
-        "return owner_dto(resource) if resource.owner_id == current_user.id else collaborator_dto(resource)\n"
-        "# Re-check the active relation when retrieving asynchronous artifacts."
-    )
+    if report.get("policy_version") == "read-boundary-v1":
+        regression_checks = [
+            "Re-run the same resource with every configured allowed and denied identity.",
+            "Require both protected-marker denial and legitimate-use success; status code alone is insufficient.",
+            "Verify identity-specific forbidden fields remain absent from sanitized responses.",
+        ]
+        patch_outline = (
+            "# Framework-neutral read guard order\n"
+            "resource = repository.find(resource_id, tenant_id=current_user.tenant_id)\n"
+            "require(policy.can_read(current_user, resource))\n"
+            "return serializer.for_identity(current_user).render(resource)"
+        )
+    else:
+        regression_checks = [
+            "Re-run the same build with owner, active collaborator, revoked collaborator and cross-tenant identities.",
+            "Require both protected-marker denial and legitimate-use success; status code alone is insufficient.",
+            "Verify asynchronous export retrieval after the full revocation grace period.",
+        ]
+        patch_outline = (
+            "# Framework-neutral guard order\n"
+            "resource = repository.find(resource_id, tenant_id=current_user.tenant_id)\n"
+            "require(resource.owner_id == current_user.id or resource.has_active_share(current_user.id))\n"
+            "return owner_dto(resource) if resource.owner_id == current_user.id else collaborator_dto(resource)\n"
+            "# Re-check the active relation when retrieving asynchronous artifacts."
+        )
     return {
         "mode": "deterministic",
         "model": None,

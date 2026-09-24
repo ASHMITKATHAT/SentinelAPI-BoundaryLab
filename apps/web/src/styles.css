@@ -162,6 +162,11 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; fo
 .launch-actions { display: grid; grid-template-columns: minmax(190px,1fr) auto auto; gap: 8px; align-items: end; }
 .launch-actions label { grid-column: 1/-1; margin: 0; }
 .launch-actions select { min-width: 0; }
+.target-setup { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 15px; align-items: start; padding: 23px; margin-bottom: 18px; border-left: 3px solid var(--navy-700); }
+.target-setup h2 { margin: 2px 0 7px; font-size: 19px; }
+.target-setup p { max-width: 850px; margin: 0 0 11px; color: var(--grey-700); font-size: 12px; line-height: 1.6; }
+.target-setup > div > code { display: block; width: fit-content; max-width: 100%; padding: 9px 11px; overflow-wrap: anywhere; border-radius: 7px; color: #dce5f0; background: var(--navy-950); font-size: 10px; }
+.setup-icon { display: grid; place-items: center; width: 43px; height: 43px; border-radius: 11px; color: white; background: var(--navy-800); }
 
 .workspace-grid { display: grid; grid-template-columns: 275px minmax(0,1fr); gap: 18px; align-items: start; }
 .recent { position: sticky; top: 16px; overflow: hidden; }
@@ -236,6 +241,8 @@ td small { margin-top: 3px; color: var(--grey-500); font-size: 8px; }
 .drawer pre { padding: 15px; overflow: auto; border-radius: 8px; color: #dce5f0; background: var(--navy-950); font: 10px/1.65 ui-monospace,monospace; }
 .hash { overflow-wrap: anywhere; color: var(--grey-500); font: 9px ui-monospace,monospace; }
 .notice { padding: 11px; border-left: 3px solid var(--red-600); border-radius: 5px; color: var(--red-800); background: var(--red-50); font-size: 11px; line-height: 1.5; }
+.detail-column > .notice { margin-bottom: 12px; }
+.policy-safety { margin-top: 18px; }
 
 .policy-grid { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 18px; }
 .policy-callout { margin: 19px 0; padding: 18px; border-left: 3px solid var(--red-600); border-radius: 6px; background: var(--red-50); }
@@ -425,6 +432,7 @@ td small { margin-top: 3px; color: var(--grey-500); font-size: 8px; }
   .launch { padding: 15px; }
   .launch-actions { grid-template-columns: 1fr; }
   .launch-actions > * { grid-column: 1!important; }
+  .target-setup { grid-template-columns: 1fr; }
   .metrics, .overview-strip { grid-template-columns: 1fr 1fr; }
   .report-row { grid-template-columns: 1fr; }
   .report-row > .status { justify-self: start; }

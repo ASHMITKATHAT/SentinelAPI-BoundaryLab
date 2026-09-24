@@ -39,8 +39,10 @@ policy = load("examples/invoice-policy.json")
 evaluation = load("examples/evaluation-cases.json")
 load("examples/fixture-manifest.json")
 load("design/tokens.json")
+real_registry = load("examples/real-target/registry.example.json")
+real_openapi = load("examples/real-target/staging.openapi.example.json")
 
-for name, document in [("control", control), ("demo", demo)]:
+for name, document in [("control", control), ("demo", demo), ("real-target-example", real_openapi)]:
     if document.get("openapi") != "3.1.0":
         errors.append(f"{name}: expected OpenAPI 3.1.0")
     operation_ids: list[str] = []
@@ -53,6 +55,21 @@ for name, document in [("control", control), ("demo", demo)]:
         errors.append(f"{name}: duplicate operation IDs: {duplicates}")
     for match in re.finditer(r'"\$ref"\s*:\s*"([^"]+)"', json.dumps(document)):
         resolve_local_ref(document, match.group(1))
+
+if real_registry.get("version") != "1.0" or len(real_registry.get("targets", [])) != 1:
+    errors.append("real target example: expected one version 1.0 target")
+else:
+    example_target = real_registry["targets"][0]
+    if example_target.get("origin") != "http://127.0.0.1:9443":
+        errors.append("real target example: origin must remain numeric loopback")
+    probe = example_target.get("probe", {})
+    if probe.get("path_template") not in real_openapi.get("paths", {}):
+        errors.append("real target example: probe path is absent from its OpenAPI document")
+    if any(
+        not str(identity.get("token_env", "")).endswith("_TOKEN")
+        for identity in probe.get("identities", [])
+    ):
+        errors.append("real target example: token values must be environment references")
 
 required_cases = [f"C{index:02}" for index in range(1, 13)]
 if policy.get("required_cases") != required_cases:
@@ -123,8 +140,8 @@ if errors:
     sys.exit(1)
 
 print("PACK VALIDATION PASSED")
-print("JSON artifacts: 7")
-print("OpenAPI documents: 2")
+print("JSON artifacts: 9")
+print("OpenAPI documents: 3")
 print("Evaluation cases: 30 (12 core + 18 failure)")
 print(f"Markdown files: {len(markdown_files)}")
 print("Container profile: policy controls present (image build not performed)")

@@ -11,6 +11,14 @@ def json_report(report: dict[str, Any]) -> bytes:
 
 def html_report(report: dict[str, Any]) -> bytes:
     escape = lambda value: html.escape(str(value))
+    case_count = len(report.get("cases", []))
+    real_probe = report.get("policy_version") == "read-boundary-v1"
+    scope_text = (
+        f"This assessment applies only to the {case_count} declared read-boundary cases, configured identities, "
+        "resource marker and target build."
+        if real_probe
+        else f"This assessment applies only to the {case_count} declared invoice-sharing cases and this build."
+    )
     case_rows = "".join(
         "<tr>"
         f"<td><code>{escape(case['case_id'])}</code></td>"
@@ -33,7 +41,7 @@ def html_report(report: dict[str, Any]) -> bytes:
 <p>Build <code>{escape(report.get('build_id'))}</code> · Policy <code>{escape(report.get('policy_version'))}</code></p>
 <span class="assessment">{escape(report.get('assessment'))}</span>
 <div class="grid"><div class="metric"><span>Pass</span><b>{escape(counts.get('pass', 0))}</b></div><div class="metric"><span>Violations</span><b>{escape(counts.get('violation', 0))}</b></div><div class="metric"><span>Inconclusive</span><b>{escape(counts.get('inconclusive', 0))}</b></div><div class="metric"><span>Requests</span><b>{escape(report.get('request_count', 0))}</b></div></div></header>
-<section class="panel"><h2>Executive interpretation</h2><p>This assessment applies only to the 12 declared invoice-sharing cases and this build. A blocked result contains a policy violation or legitimate-use regression. A pass does not establish security outside the tested scope.</p><p class="scope">Fixture cleanup: {escape(report.get('cleanup_status'))} · Incomplete context: {escape(report.get('has_incomplete_cases'))} · Execution error: {escape(report.get('execution_error'))}</p></section>
+<section class="panel"><h2>Executive interpretation</h2><p>{escape(scope_text)} A blocked result contains a policy violation or legitimate-use regression. A pass does not establish security outside the tested scope.</p><p class="scope">Cleanup: {escape(report.get('cleanup_status'))} · Incomplete context: {escape(report.get('has_incomplete_cases'))} · Execution error: {escape(report.get('execution_error'))}</p></section>
 <section class="panel"><h2>Case evidence</h2><table><thead><tr><th>Case</th><th>Promise</th><th>Verdict</th><th>Expected</th><th>Observed</th></tr></thead><tbody>{case_rows}</tbody></table></section>
 </main></body></html>"""
     return document.encode("utf-8")

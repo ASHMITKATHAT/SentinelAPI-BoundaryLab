@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "SentinelAPI BoundaryLab control API",
-    "version": "0.3.0"
+    "version": "0.3.1"
   },
   "servers": [
     {
@@ -173,7 +173,7 @@
     "/policy": {
       "get": {
         "operationId": "getPolicy",
-        "summary": "Reviewed invoice permission policy and exact hash",
+        "summary": "Reviewed permission policy and exact hash for one configured target",
         "responses": {
           "200": {
             "description": "Successful operation",
@@ -196,13 +196,24 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "target_alias",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
       }
     },
     "/spec": {
       "get": {
         "operationId": "getSpecification",
-        "summary": "Bundled target contract and operation inventory",
+        "summary": "Target-bound contract and operation inventory",
         "responses": {
           "200": {
             "description": "Successful operation",
@@ -225,7 +236,18 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "target_alias",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ]
       }
     },
     "/discovery/analyses": {
@@ -1410,6 +1432,26 @@
           "synthetic_fixture": {
             "type": "boolean"
           },
+          "mode": {
+            "enum": [
+              "temporal_lab",
+              "real_read_probe"
+            ]
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "missing_environment": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "case_count": {
+            "type": "integer",
+            "minimum": 0
+          },
           "limits": {
             "type": "object",
             "additionalProperties": false,
@@ -1444,6 +1486,10 @@
           "label",
           "origin",
           "synthetic_fixture",
+          "mode",
+          "ready",
+          "missing_environment",
+          "case_count",
           "limits"
         ]
       },
@@ -2345,8 +2391,39 @@
       "Capabilities": {
         "type": "object",
         "additionalProperties": true,
+        "properties": {
+          "runtime": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "configured_targets": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "real_targets": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "lab_targets": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "remote_network": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "configured_targets",
+              "real_targets",
+              "lab_targets",
+              "remote_network"
+            ]
+          }
+        },
         "required": [
           "discovery",
+          "runtime",
           "remediation"
         ]
       }

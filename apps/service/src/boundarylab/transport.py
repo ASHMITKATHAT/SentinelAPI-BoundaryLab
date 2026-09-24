@@ -5,7 +5,7 @@ import json
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -19,6 +19,19 @@ class ScopeViolation(RuntimeError):
 
 class BudgetExceeded(RuntimeError):
     pass
+
+
+def json_pointer_value(document: Any, pointer: str) -> Any:
+    current = document
+    for raw_part in pointer.lstrip("/").split("/") if pointer else []:
+        part = raw_part.replace("~1", "/").replace("~0", "~")
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+        elif isinstance(current, list) and part.isdigit() and int(part) < len(current):
+            current = current[int(part)]
+        else:
+            return None
+    return current
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +89,7 @@ class ScopedTransport:
         base_url: str,
         limits: TransportLimits | None = None,
         cancel_event: asyncio.Event | None = None,
+        operations: dict[str, Operation] | None = None,
     ):
         parsed = urlsplit(base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.path not in {"", "/"}:
@@ -89,6 +103,7 @@ class ScopedTransport:
         self._last_started = 0.0
         self._lock = asyncio.Lock()
         self._cancel_event = cancel_event
+        self.operations = operations or OPERATIONS
 
     async def request(
         self,
@@ -99,13 +114,16 @@ class ScopedTransport:
         path: dict[str, str] | None = None,
         json_body: dict[str, Any] | None = None,
         cleanup: bool = False,
+        marker_pointer: str | None = None,
+        marker_value: Any = None,
+        redact_pointers: tuple[str, ...] = (),
     ) -> ResponseRecord:
         if not cleanup and self._cancel_event and self._cancel_event.is_set():
             raise asyncio.CancelledError("run cancellation requested")
-        if operation_id not in OPERATIONS:
+        if operation_id not in self.operations:
             raise ScopeViolation(f"operation is not approved: {operation_id}")
-        operation = OPERATIONS[operation_id]
-        path_values = path or {}
+        operation = self.operations[operation_id]
+        path_values = {key: quote(str(value), safe="") for key, value in (path or {}).items()}
         try:
             rendered_path = operation.path_template.format_map(path_values)
         except KeyError as exc:
@@ -159,7 +177,21 @@ class ScopedTransport:
                 body = {"body_type": response.headers.get("content-type", "unknown")}
 
             excerpt = allowlisted_body(body, operation.response_pointers)
-            marker_match = isinstance(body, dict) and isinstance(body.get("content_marker"), str)
+            marker_match = (
+                json_pointer_value(body, marker_pointer) == marker_value
+                if marker_pointer is not None
+                else isinstance(body, dict) and isinstance(body.get("content_marker"), str)
+            )
+            if marker_pointer and marker_match and isinstance(excerpt, dict) and "/" not in marker_pointer[1:]:
+                marker_key = marker_pointer[1:].replace("~1", "/").replace("~0", "~")
+                if marker_key in excerpt:
+                    excerpt[marker_key] = "<MATCHED_PROTECTED_MARKER>"
+            if isinstance(excerpt, dict):
+                for pointer in redact_pointers:
+                    if "/" not in pointer[1:]:
+                        key = pointer[1:].replace("~1", "/").replace("~0", "~")
+                        if key in excerpt:
+                            excerpt[key] = "<RESTRICTED_FIELD_PRESENT>"
             evidence_data = {
                 "operation_id": operation_id,
                 "identity": identity,

@@ -1,4 +1,4 @@
-import type { CandidateReview, Capabilities, Comparison, DiscoveryAnalysis, Explanation, Run, SpecSummary, Target } from './types'
+import type { CandidateReview, Capabilities, Comparison, DiscoveryAnalysis, Explanation, PolicySummary, Run, SpecSummary, Target } from './types'
 
 let csrfToken = sessionStorage.getItem('boundarylab-csrf') || ''
 
@@ -35,8 +35,8 @@ export const api = {
   },
   targets: () => request<Target[]>('/api/v1/targets'),
   capabilities: () => request<Capabilities>('/api/v1/capabilities'),
-  policy: () => request<{ approved: boolean; sha256: string; document: Record<string, unknown> }>('/api/v1/policy'),
-  spec: () => request<SpecSummary>('/api/v1/spec'),
+  policy: (targetAlias?: string) => request<PolicySummary>(`/api/v1/policy${targetAlias ? `?target_alias=${encodeURIComponent(targetAlias)}` : ''}`),
+  spec: (targetAlias?: string) => request<SpecSummary>(`/api/v1/spec${targetAlias ? `?target_alias=${encodeURIComponent(targetAlias)}` : ''}`),
   analyze: (label: string, document: Record<string, unknown>, har: Record<string, unknown> | null) =>
     request<DiscoveryAnalysis>('/api/v1/discovery/analyses', {
       method: 'POST', body: JSON.stringify({ label, document, har }),

@@ -1,0 +1,41 @@
+{
+  "version": "1.0",
+  "targets": [
+    {
+      "alias": "orders-staging",
+      "label": "Orders staging read boundary",
+      "origin": "http://127.0.0.1:9443",
+      "openapi_path": "staging.openapi.example.json",
+      "probe": {
+        "operation_id": "getOrder",
+        "method": "GET",
+        "path_template": "/v1/orders/{resource_id}",
+        "resource_id_env": "BOUNDARYLAB_ORDER_ID",
+        "marker_pointer": "/proof",
+        "marker_env": "BOUNDARYLAB_ORDER_MARKER",
+        "build_id_env": "BOUNDARYLAB_ORDER_BUILD",
+        "deny_statuses": [
+          401,
+          403,
+          404
+        ],
+        "identities": [
+          {
+            "name": "owner",
+            "expectation": "allow",
+            "token_env": "BOUNDARYLAB_OWNER_TOKEN",
+            "forbidden_pointers": []
+          },
+          {
+            "name": "outsider",
+            "expectation": "deny",
+            "token_env": "BOUNDARYLAB_OUTSIDER_TOKEN",
+            "forbidden_pointers": [
+              "/internal_note"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

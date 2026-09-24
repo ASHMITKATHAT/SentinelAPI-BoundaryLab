@@ -6,6 +6,10 @@ export interface Target {
   label: string
   origin: string
   synthetic_fixture: boolean
+  mode: 'temporal_lab' | 'real_read_probe'
+  ready: boolean
+  missing_environment: string[]
+  case_count: number
   limits: { requests: number; requests_per_second: number; in_flight: number; response_bytes: number }
 }
 
@@ -82,16 +86,24 @@ export interface Comparison {
 }
 
 export interface SpecSummary {
+  configured: boolean
   title: string
   version: string
   openapi: string
   operation_count: number
   operations: string[]
+  document: Record<string, unknown> | null
+}
+
+export interface PolicySummary {
+  approved: boolean
+  sha256: string
   document: Record<string, unknown>
 }
 
 export interface Capabilities {
   discovery: { openapi: boolean; har: boolean; active_replay: string; candidate_reviews: string }
+  runtime: { configured_targets: number; real_targets: number; lab_targets: number; remote_network: string }
   remediation: { deterministic: boolean; ai_configured: boolean; model: string | null; data_sent: string }
 }
 

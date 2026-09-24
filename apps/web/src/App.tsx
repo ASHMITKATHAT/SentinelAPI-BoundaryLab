@@ -1,6 +1,6 @@
 import { Component, FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
-import type { CandidateReview, Capabilities, CaseResult, Comparison, DiscoveryAnalysis, Evidence, Explanation, Report, Run, SpecSummary, Target, Verdict } from './types'
+import type { CandidateReview, Capabilities, CaseResult, Comparison, DiscoveryAnalysis, Evidence, Explanation, PolicySummary, Report, Run, SpecSummary, Target, Verdict } from './types'
 
 type View = 'runs' | 'discovery' | 'policy' | 'compare' | 'reports'
 
@@ -60,8 +60,8 @@ function Login({ onLogin }: { onLogin: () => void }) {
     <section className="login-brand" aria-label="BoundaryLab overview">
       <div className="mark mark-large">B</div><p className="eyebrow light">SentinelAPI / AmiHacks</p>
       <h1>Prove the boundary.<br/><span>Preserve the product.</span></h1>
-      <p>Authorization regression evidence across the full permission lifecycle—from grant to revocation and retrieval.</p>
-      <div className="login-proof"><b>12</b><span>declared policy cases</span><b>3</b><span>disclosed fixture builds</span></div>
+      <p>Run bounded authorization checks against an API you control and keep reviewable, redacted evidence.</p>
+      <div className="login-proof"><b>GET</b><span>read-only real probes</span><b>0</b><span>secrets persisted</span></div>
     </section>
     <section className="login-card">
       <p className="eyebrow">Local operator access</p><h2>Open the workbench</h2>
@@ -80,7 +80,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
 function SideNav({ view, setView, logout, activeRuns }: { view: View; setView: (view: View) => void; logout: () => void; activeRuns: number }) {
   const items: View[] = ['discovery', 'policy', 'runs', 'compare', 'reports']
   return <aside className="sidebar">
-    <div><div className="brand"><div className="mark">B</div><div><strong>BoundaryLab</strong><small>SentinelAPI · v0.3</small></div></div>
+    <div><div className="brand"><div className="mark">B</div><div><strong>BoundaryLab</strong><small>SentinelAPI · v0.3.1</small></div></div>
       <p className="nav-section">Release workflow</p>
       <nav aria-label="Product navigation">{items.map(id =>
         <button key={id} className={view === id ? 'active' : ''} onClick={() => setView(id)} aria-current={view === id ? 'page' : undefined}>
@@ -92,13 +92,13 @@ function SideNav({ view, setView, logout, activeRuns }: { view: View; setView: (
   </aside>
 }
 
-function WorkspaceHeader({ view, activeRuns }: { view: View; activeRuns: number }) {
-  return <header className="topbar"><div className="breadcrumbs"><span className="stage-index">{viewMeta[view].index}</span><strong>{viewMeta[view].label}</strong></div><div className="topbar-actions"><span className="control-status"><i/>{activeRuns ? `${activeRuns} run${activeRuns > 1 ? 's' : ''} active` : 'Ready'}</span><span className="policy-pill"><code>invoice-policy-v1</code></span></div></header>
+function WorkspaceHeader({ view, activeRuns, policyLabel }: { view: View; activeRuns: number; policyLabel: string }) {
+  return <header className="topbar"><div className="breadcrumbs"><span className="stage-index">{viewMeta[view].index}</span><strong>{viewMeta[view].label}</strong></div><div className="topbar-actions"><span className="control-status"><i/>{activeRuns ? `${activeRuns} run${activeRuns > 1 ? 's' : ''} active` : 'Ready'}</span><span className="policy-pill"><code>{policyLabel}</code></span></div></header>
 }
 
 function RunList({ runs, selected, select }: { runs: Run[]; selected?: string; select: (run: Run) => void }) {
   return <div className="run-list" aria-label="Recent runs">
-    {runs.length === 0 && <div className="empty-small"><Icon name="pulse"/><strong>No verification runs yet</strong><span>Start a disclosed fixture build to create evidence.</span></div>}
+    {runs.length === 0 && <div className="empty-small"><Icon name="pulse"/><strong>No verification runs yet</strong><span>Choose a ready target to create evidence.</span></div>}
     {runs.map(run => <button key={run.id} className={selected === run.id ? 'run-row selected' : 'run-row'} onClick={() => select(run)}>
       <div className="run-row-main"><span className="run-glyph"><Icon name="pulse" size={15}/></span><span><strong>{run.target_alias.replace('demo-', '')}</strong><small>{new Date(run.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} · {run.id.slice(-6)}</small></span></div>
       <div className="run-row-end"><StatusBadge value={run.assessment || run.state}/><Icon name="chevron" size={14}/></div>
@@ -107,12 +107,14 @@ function RunList({ runs, selected, select }: { runs: Run[]; selected?: string; s
 }
 
 function Timeline({ report }: { report: Report }) {
-  const operations = ['grantShare', 'queueExport', 'getExportContent', 'revokeShare', 'getMe', 'getExportContent']
-  const picked: Evidence[] = []
-  let cursor = 0
-  for (const operation of operations) {
-    const found = report.evidence.find((item, index) => index >= cursor && item.operation_id === operation)
-    if (found) { picked.push(found); cursor = report.evidence.indexOf(found) + 1 }
+  const picked: Evidence[] = report.policy_version === 'read-boundary-v1' ? report.evidence : []
+  if (!picked.length) {
+    const operations = ['grantShare', 'queueExport', 'getExportContent', 'revokeShare', 'getMe', 'getExportContent']
+    let cursor = 0
+    for (const operation of operations) {
+      const found = report.evidence.find((item, index) => index >= cursor && item.operation_id === operation)
+      if (found) { picked.push(found); cursor = report.evidence.indexOf(found) + 1 }
+    }
   }
   return <div className="timeline">{picked.map((item, index) =>
     <div className={`timeline-step ${item.status_code && item.status_code >= 400 ? 'denied' : ''}`} key={`${item.evidence_id}-${index}`}>
@@ -171,19 +173,21 @@ function RunDetail({ run, cancel, capabilities }: { run: Run | null; cancel: (id
   const [evidence, setEvidence] = useState<Evidence | null>(null)
   if (!run) return <section className="empty-state"><div className="empty-icon">↗</div><h2>Select or start a run</h2><p>Actual evidence and policy outcomes will appear here.</p></section>
   const report = run.report
+  const realProbe = report?.policy_version === 'read-boundary-v1'
   const openCase = (item: CaseResult) => {
     const found = report?.evidence.find(e => item.evidence_ids.includes(e.evidence_id)); if (found) setEvidence(found)
   }
   return <>
     <section className="run-hero card">
-      <div><p className="eyebrow">Permission lifecycle / {run.id}</p><h2>Can Bob still retrieve the invoice after access is revoked?</h2><p className="muted">Target <code>{run.target_alias}</code> · build <code>{run.build_id || 'pending'}</code></p></div>
+      <div><p className="eyebrow">{realProbe ? 'Real staging boundary' : 'Permission lifecycle'} / {run.id}</p><h2>{realProbe ? 'Do the configured identities respect this resource boundary?' : 'Can Bob still retrieve the invoice after access is revoked?'}</h2><p className="muted">Target <code>{run.target_alias}</code> · build <code>{run.build_id || 'pending'}</code></p></div>
       <div className="hero-status"><StatusBadge value={run.assessment || run.state}/>{!['completed','failed','interrupted','cancelled'].includes(run.state) && <button className="button secondary compact" onClick={() => cancel(run.id)}>Cancel</button>}</div>
     </section>
     {!report && <section className="card working"><div className="spinner"/><div><h3>{run.state === 'queued' ? 'Waiting for the single safe worker' : 'Executing bounded target requests'}</h3><p>State and evidence are persisted. Refreshing this page will not lose the run.</p></div></section>}
     {report && <>
+      {report.execution_error && <section className="notice" role="alert"><strong>Run incomplete.</strong> {report.execution_error}</section>}
       <section className="metrics"><div><span>Pass</span><b>{report.counts.pass}</b></div><div className="metric-danger"><span>Violations</span><b>{report.counts.violation}</b></div><div><span>Inconclusive</span><b>{report.counts.inconclusive}</b></div><div><span>Requests</span><b>{report.request_count}</b></div></section>
-      <section className="card"><div className="section-head"><div><p className="eyebrow">Observed sequence</p><h3>Follow the permission</h3></div><span className="scope-chip">2,000 ms grace · 200 ms margin</span></div><Timeline report={report}/></section>
-      <section className="card"><div className="section-head"><div><p className="eyebrow">Policy acceptance</p><h3>12 required cases</h3></div><span className="muted micro">Cleanup: {report.cleanup_status}</span></div>
+      <section className="card"><div className="section-head"><div><p className="eyebrow">Observed requests</p><h3>{realProbe ? 'One bounded read per identity' : 'Follow the permission'}</h3></div><span className="scope-chip">{realProbe ? 'GET only · redirects blocked' : '2,000 ms grace · 200 ms margin'}</span></div><Timeline report={report}/></section>
+      <section className="card"><div className="section-head"><div><p className="eyebrow">Policy acceptance</p><h3>{report.cases.length} required cases</h3></div><span className="muted micro">Cleanup: {report.cleanup_status}</span></div>
         <div className="table-scroll"><table><thead><tr><th>Case</th><th>Permission promise</th><th>Expected</th><th>Observed</th><th>Verdict</th></tr></thead><tbody>
           {report.cases.map(item => <tr key={item.case_id} className={item.evidence_ids.length ? 'clickable' : ''} tabIndex={item.evidence_ids.length ? 0 : undefined} aria-label={item.evidence_ids.length ? `Open evidence for ${item.case_id}: ${item.name}` : undefined} onClick={event => { event.currentTarget.focus(); openCase(item) }} onKeyDown={event => { if (item.evidence_ids.length && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openCase(item) } }}>
             <td><code>{item.case_id}</code></td><td><strong>{item.name}</strong>{item.reason_code && <small>{item.reason_code}</small>}</td><td>{item.expected}</td><td>{item.observed}</td><td><StatusBadge value={item.verdict}/></td>
@@ -195,18 +199,22 @@ function RunDetail({ run, cancel, capabilities }: { run: Run | null; cancel: (id
   </>
 }
 
-function RunsView({ targets, runs, selectedRun, select, refresh, capabilities }: { targets: Target[]; runs: Run[]; selectedRun: Run | null; select: (run: Run) => void; refresh: () => Promise<void>; capabilities: Capabilities | null }) {
-  const [target, setTarget] = useState('demo-vulnerable')
+function RunsView({ targets, targetAlias, onTargetChange, runs, selectedRun, select, refresh, capabilities }: { targets: Target[]; targetAlias: string; onTargetChange: (alias: string) => void; runs: Run[]; selectedRun: Run | null; select: (run: Run) => void; refresh: () => Promise<void>; capabilities: Capabilities | null }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  async function start(alias = target) { setBusy(true); setError(''); try { const run = await api.startRun(alias); select(run); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not start run') } finally { setBusy(false) } }
-  async function matrix() { setBusy(true); setError(''); try { let first: Run | null = null; for (const item of targets) { const run = await api.startRun(item.alias); first ||= run } if (first) select(first); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not queue matrix') } finally { setBusy(false) } }
+  const selectedTarget = targets.find(item => item.alias === targetAlias) || null
+  const labTargets = targets.filter(item => item.synthetic_fixture && item.ready)
+  async function start(alias: string) { setBusy(true); setError(''); try { const run = await api.startRun(alias); select(run); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not start run') } finally { setBusy(false) } }
+  async function matrix() { setBusy(true); setError(''); try { let first: Run | null = null; for (const item of labTargets) { const run = await api.startRun(item.alias); first ||= run } if (first) select(first); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not queue lab matrix') } finally { setBusy(false) } }
   async function cancel(id: string) { try { await api.cancelRun(id); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Cancellation failed') } }
   const completed = runs.filter(run => run.state === 'completed')
   const violations = completed.reduce((sum, run) => sum + (run.counts.violation || 0), 0)
-  return <><header className="page-head"><div><p className="eyebrow">Runtime verification</p><h1>Prove access stays revoked.</h1><p>Replay the sharing lifecycle and see exactly where the permission boundary holds or breaks.</p></div><div className="demo-flag"><i/>Safe fixture</div></header>
-    <section className="overview-strip" aria-label="Verification overview"><div><span>Completed runs</span><strong>{completed.length}</strong></div><div className={violations ? 'danger' : ''}><span>Recorded violations</span><strong>{violations}</strong></div><div><span>Required cases</span><strong>12 / run</strong></div><div><span>Evidence mode</span><strong>Redacted + hashed</strong></div></section>
-    <section className="launch card"><div className="launch-copy"><div><h2>Run a verification</h2><p>Choose a registered build. Every request stays inside the allowlisted fixture.</p><div className="assurance-row"><span><Icon name="lock" size={13}/>Allowlisted</span><span>60 requests max</span><span>1 at a time</span></div></div></div><div className="launch-actions"><label htmlFor="target">Build to test</label><select id="target" value={target} onChange={e => setTarget(e.target.value)}>{targets.map(item => <option value={item.alias} key={item.alias}>{item.label}</option>)}</select><button className="button primary" onClick={() => start()} disabled={busy}>{busy ? 'Queueing…' : 'Run verification'}</button><button className="button secondary" onClick={matrix} disabled={busy}>Run all 3 builds</button></div>{error && <p className="form-error full" role="alert">{error}</p>}</section>
+  const realMode = selectedTarget?.mode === 'real_read_probe'
+  const noTargets = targets.length === 0
+  return <><header className="page-head"><div><p className="eyebrow">Runtime verification</p><h1>{noTargets ? 'Connect a target to begin.' : realMode ? 'Test a real access boundary.' : 'Prove access stays revoked.'}</h1><p>{noTargets ? 'Active requests remain disabled until a reviewed staging registry or explicit lab mode is loaded.' : realMode ? 'Send one bounded GET per reviewed identity and keep only redacted proof.' : 'Replay the disclosed sharing lifecycle and see exactly where the permission boundary holds or breaks.'}</p></div><div className="demo-flag"><i/>{realMode ? 'Authorized staging' : targets.length ? 'Disclosed lab' : 'No target configured'}</div></header>
+    <section className="overview-strip" aria-label="Verification overview"><div><span>Completed runs</span><strong>{completed.length}</strong></div><div className={violations ? 'danger' : ''}><span>Recorded violations</span><strong>{violations}</strong></div><div><span>Required cases</span><strong>{selectedTarget?.case_count || 0} / run</strong></div><div><span>Evidence mode</span><strong>Redacted + hashed</strong></div></section>
+    {targets.length === 0 ? <section className="card target-setup"><span className="setup-icon"><Icon name="lock" size={22}/></span><div><p className="eyebrow">Active testing disabled by default</p><h2>Connect an authorized staging target</h2><p>Start BoundaryLab with a reviewed target registry. Real mode accepts a fixed GET operation on numeric loopback only, so use a local service or an SSH-forwarded staging port. Tokens, resource IDs and proof markers come from environment references and are never accepted from the browser.</p><code>python -m boundarylab.devserver --target-config .\targets\registry.json</code></div></section> :
+    <section className="launch card"><div className="launch-copy"><div><h2>Run a verification</h2><p>{realMode ? `Fixed read probe through ${selectedTarget?.origin}` : 'Choose a disclosed lab build. Requests remain inside the local fixture.'}</p><div className="assurance-row"><span><Icon name="lock" size={13}/>Allowlisted</span><span>{selectedTarget?.limits.requests || 0} requests max</span><span>1 at a time</span><span>No redirects</span></div></div></div><div className="launch-actions"><label htmlFor="target">Target to test</label><select id="target" value={targetAlias} onChange={e => onTargetChange(e.target.value)}>{targets.map(item => <option value={item.alias} key={item.alias} disabled={!item.ready}>{item.label}{item.ready ? '' : ' · missing environment'}</option>)}</select><button className="button primary" onClick={() => selectedTarget && start(selectedTarget.alias)} disabled={busy || !selectedTarget?.ready}>{busy ? 'Queueing…' : 'Run verification'}</button>{labTargets.length > 1 && <button className="button secondary" onClick={matrix} disabled={busy}>Run lab matrix</button>}</div>{selectedTarget && !selectedTarget.ready && <p className="form-error full" role="alert">Missing runtime environment references: {selectedTarget.missing_environment.join(', ')}</p>}{error && <p className="form-error full" role="alert">{error}</p>}</section>}
     <div className="workspace-grid"><section className="card recent"><div className="section-head"><div><p className="eyebrow">Evidence index</p><h3>Recent runs</h3></div><button className="icon-button" onClick={refresh} aria-label="Refresh runs"><Icon name="refresh"/></button></div><RunList runs={runs} selected={selectedRun?.id} select={select}/></section><div className="detail-column"><RunDetail run={selectedRun} cancel={cancel} capabilities={capabilities}/></div></div>
   </>
 }
@@ -273,14 +281,15 @@ function DiscoveryView({ spec }: { spec: SpecSummary | null }) {
   </>
 }
 
-function PolicyView({ policy, spec }: { policy: { approved: boolean; sha256: string; document: Record<string, any> } | null; spec: SpecSummary | null }) {
+function PolicyView({ policy, spec }: { policy: PolicySummary | null; spec: SpecSummary | null }) {
   if (!policy || !spec) return <section className="empty-state"><div className="spinner"/><h2>Loading reviewed policy</h2></section>
-  const document = policy.document
+  const document = policy.document as Record<string, any>
+  if (!policy.approved || !spec.configured) return <><header className="page-head"><div><p className="eyebrow">Access contract</p><h1>No active policy configured.</h1><p>Passive discovery remains available. Active testing starts only after an operator supplies a reviewed target registry.</p></div><StatusBadge value="draft"/></header><section className="card target-setup"><span className="setup-icon"><Icon name="shield" size={22}/></span><div><h2>Fail-closed runtime</h2><p>{String(document.safety || 'Add a reviewed target registry before active testing.')}</p><p className="micro muted">No demo target, token or expected result is silently substituted.</p></div></section></>
+  const realPolicy = document.scenario === 'read-boundary-v1'
   return <><header className="page-head"><div><p className="eyebrow">Access contract</p><h1>Define what access means.</h1><p>The API schema explains how to call an endpoint. This policy explains who should receive the data.</p></div><StatusBadge value={policy.approved ? 'approved' : 'draft'}/></header>
-    <section className="policy-grid"><div className="card policy-main"><div className="section-head"><div><p className="eyebrow">{String(document.name)}</p><h2>Invoice sharing policy · v1</h2></div><code>{policy.sha256.slice(0,12)}…</code></div>
-      <div className="policy-callout"><span>Revocation promise</span><strong>Fresh export retrieval must stop within {document.revocation.grace_ms} ms.</strong><p>Measured after successful revoke acknowledgement, plus {document.revocation.probe_margin_ms} ms probe margin.</p></div>
-      <div className="table-scroll"><table><thead><tr><th>Relation</th><th>Private preview</th><th>Shared detail</th><th>Owner field</th><th>Export after revoke</th></tr></thead><tbody><tr><td>Alice · owner</td><td>Allow</td><td>Allow</td><td>Allow</td><td>Allow</td></tr><tr><td>Bob · active share</td><td>Deny</td><td>Allow</td><td>Deny</td><td>Allow</td></tr><tr><td>Bob · revoked</td><td>Deny</td><td>Deny</td><td>Deny</td><td>Deny</td></tr><tr><td>Mallory · tenant B</td><td>Deny</td><td>Deny</td><td>Deny</td><td>Deny</td></tr></tbody></table></div></div>
-      <aside className="card spec-card"><p className="eyebrow">Bound contract</p><h2>{spec.title}</h2><dl><div><dt>Format</dt><dd>OpenAPI {spec.openapi}</dd></div><div><dt>Operations</dt><dd>{spec.operation_count}</dd></div><div><dt>Required cases</dt><dd>{document.required_cases.length}</dd></div><div><dt>Fixture semantics</dt><dd>{document.fixture_semantics_version}</dd></div></dl><h3>Supported operations</h3><div className="code-list">{spec.operations.map(item => <code key={item}>{item}</code>)}</div></aside></section>
+    <section className="policy-grid"><div className="card policy-main"><div className="section-head"><div><p className="eyebrow">{String(document.name)}</p><h2>{realPolicy ? 'Reviewed staging read boundary' : 'Invoice sharing policy · v1'}</h2></div><code>{policy.sha256.slice(0,12)}…</code></div>
+      {realPolicy ? <><div className="policy-callout"><span>Active safety contract</span><strong>One fixed GET is replayed for each reviewed identity.</strong><p>The configured marker must appear only for allowed identities. Redirects, arbitrary URLs and browser-supplied credentials are rejected.</p></div><div className="table-scroll"><table><thead><tr><th>Identity</th><th>Expected access</th><th>Forbidden response fields</th><th>Operation</th></tr></thead><tbody>{(document.identities || []).map((identity: any) => <tr key={identity.name}><td><strong>{identity.name}</strong></td><td><StatusBadge value={identity.expectation === 'allow' ? 'approved' : 'blocked'}/></td><td>{identity.forbidden_pointers?.length ? identity.forbidden_pointers.join(', ') : 'None declared'}</td><td><code>{document.operation_id}</code></td></tr>)}</tbody></table></div></> : <><div className="policy-callout"><span>Revocation promise</span><strong>Fresh export retrieval must stop within {document.revocation.grace_ms} ms.</strong><p>Measured after successful revoke acknowledgement, plus {document.revocation.probe_margin_ms} ms probe margin.</p></div><div className="table-scroll"><table><thead><tr><th>Relation</th><th>Private preview</th><th>Shared detail</th><th>Owner field</th><th>Export after revoke</th></tr></thead><tbody><tr><td>Alice · owner</td><td>Allow</td><td>Allow</td><td>Allow</td><td>Allow</td></tr><tr><td>Bob · active share</td><td>Deny</td><td>Allow</td><td>Deny</td><td>Allow</td></tr><tr><td>Bob · revoked</td><td>Deny</td><td>Deny</td><td>Deny</td><td>Deny</td></tr><tr><td>Mallory · tenant B</td><td>Deny</td><td>Deny</td><td>Deny</td><td>Deny</td></tr></tbody></table></div></>}
+      </div><aside className="card spec-card"><p className="eyebrow">Bound contract</p><h2>{spec.title}</h2><dl><div><dt>Format</dt><dd>OpenAPI {spec.openapi}</dd></div><div><dt>Operations</dt><dd>{spec.operation_count}</dd></div><div><dt>Required cases</dt><dd>{document.required_cases?.length || 0}</dd></div><div><dt>Execution</dt><dd>{realPolicy ? 'GET only' : document.fixture_semantics_version}</dd></div></dl><h3>Supported operations</h3><div className="code-list">{spec.operations.map(item => <code key={item}>{item}</code>)}</div><div className="notice policy-safety">{String(document.safety || 'Declared fixture policy')}</div></aside></section>
   </>
 }
 
@@ -291,9 +300,9 @@ function CompareView({ runs }: { runs: Run[] }) {
   const [error, setError] = useState('')
   const toggle = (id: string) => setSelected(current => current.includes(id) ? current.filter(x => x !== id) : current.length < 3 ? [...current, id] : current)
   async function compare() { setError(''); try { setComparison(await api.compare(selected)) } catch (e) { setError(e instanceof Error ? e.message : 'Comparison failed') } }
-  return <><header className="page-head"><div><p className="eyebrow">Fix validation</p><h1>Verify the fix.</h1><p>Prove the leak is closed without breaking access for legitimate users.</p></div></header>
-    <section className="card compare-picker"><div><h2>Select 2–3 runs</h2><p className="muted">Use vulnerable, owner-only and fixed builds for the strongest mentor demonstration.</p></div><div className="run-checks">{completed.map(run => <label key={run.id} className={selected.includes(run.id) ? 'run-check selected' : 'run-check'}><input type="checkbox" checked={selected.includes(run.id)} onChange={() => toggle(run.id)}/><span><strong>{run.target_alias.replace('demo-','')}</strong><small>{run.id.slice(-6)} · {run.assessment}</small></span></label>)}</div><button className="button primary" disabled={selected.length < 2} onClick={compare}>Compare selected repairs</button>{error && <p className="form-error" role="alert">{error}</p>}</section>
-    {comparison && <section className="card"><div className="section-head"><div><p className="eyebrow">Compatible policy · {comparison.policy_version}</p><h2>Repair matrix</h2></div><span className="scope-chip">Same 12-case suite</span></div><div className="table-scroll"><table><thead><tr><th>Case</th><th>Promise</th>{comparison.runs.map(run => <th key={run.id}>{run.target_alias.replace('demo-','')}</th>)}</tr></thead><tbody>{comparison.rows.map(row => <tr key={row.case_id}><td><code>{row.case_id}</code></td><td>{row.name}</td>{row.outcomes.map(outcome => <td key={outcome.run_id}><StatusBadge value={outcome.verdict}/></td>)}</tr>)}</tbody></table></div></section>}
+  return <><header className="page-head"><div><p className="eyebrow">Fix validation</p><h1>Verify the behavior changed.</h1><p>Compare repeated evidence only when the reviewed policy and case suite match.</p></div></header>
+    <section className="card compare-picker"><div><h2>Select 2–3 runs</h2><p className="muted">Different policies or identity suites fail closed as non-comparable.</p></div><div className="run-checks">{completed.map(run => <label key={run.id} className={selected.includes(run.id) ? 'run-check selected' : 'run-check'}><input type="checkbox" checked={selected.includes(run.id)} onChange={() => toggle(run.id)}/><span><strong>{run.target_alias.replace('demo-','')}</strong><small>{run.id.slice(-6)} · {run.assessment}</small></span></label>)}</div><button className="button primary" disabled={selected.length < 2} onClick={compare}>Compare selected runs</button>{error && <p className="form-error" role="alert">{error}</p>}</section>
+    {comparison && <section className="card"><div className="section-head"><div><p className="eyebrow">Compatible policy · {comparison.policy_version}</p><h2>Evidence matrix</h2></div><span className="scope-chip">Same {comparison.rows.length}-case suite</span></div><div className="table-scroll"><table><thead><tr><th>Case</th><th>Promise</th>{comparison.runs.map(run => <th key={run.id}>{run.target_alias.replace('demo-','')}</th>)}</tr></thead><tbody>{comparison.rows.map(row => <tr key={row.case_id}><td><code>{row.case_id}</code></td><td>{row.name}</td>{row.outcomes.map(outcome => <td key={outcome.run_id}><StatusBadge value={outcome.verdict}/></td>)}</tr>)}</tbody></table></div></section>}
   </>
 }
 
@@ -311,9 +320,10 @@ function WorkbenchApp() {
   const [auth, setAuth] = useState<'loading'|'login'|'ready'>('loading')
   const [view, setView] = useState<View>('runs')
   const [targets, setTargets] = useState<Target[]>([])
+  const [targetAlias, setTargetAlias] = useState('')
   const [runs, setRuns] = useState<Run[]>([])
   const [selectedRun, setSelectedRun] = useState<Run | null>(null)
-  const [policy, setPolicy] = useState<any>(null)
+  const [policy, setPolicy] = useState<PolicySummary | null>(null)
   const [spec, setSpec] = useState<SpecSummary | null>(null)
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null)
   const [workspaceLoading, setWorkspaceLoading] = useState(true)
@@ -326,7 +336,10 @@ function WorkbenchApp() {
   const loadWorkspace = useCallback(async () => {
     setWorkspaceLoading(true); setWorkspaceError('')
     try {
-      const [targetData, runData, policyData, specData, capabilityData] = await Promise.all([api.targets(), api.runs(), api.policy(), api.spec(), api.capabilities()])
+      const [targetData, runData, capabilityData] = await Promise.all([api.targets(), api.runs(), api.capabilities()])
+      const initialAlias = targetData[0]?.alias || ''
+      const [policyData, specData] = await Promise.all([api.policy(initialAlias || undefined), api.spec(initialAlias || undefined)])
+      setTargetAlias(initialAlias)
       setTargets(targetData); setRuns(runData); setPolicy(policyData); setSpec(specData); setCapabilities(capabilityData)
       if (runData[0]) setSelectedRun(await api.run(runData[0].id))
     } catch (caught) {
@@ -340,15 +353,26 @@ function WorkbenchApp() {
   const active = activeRuns > 0
   useEffect(() => { if (!active || auth !== 'ready') return; const timer=window.setInterval(() => loadRuns().catch(()=>undefined),1000); return()=>window.clearInterval(timer) }, [active, auth, loadRuns])
   async function select(run: Run) { setSelectedRun(await api.run(run.id)) }
+  async function changeTarget(alias: string) {
+    setTargetAlias(alias); setWorkspaceError('')
+    try {
+      const [policyData, specData] = await Promise.all([api.policy(alias), api.spec(alias)])
+      setPolicy(policyData); setSpec(specData)
+      const related = runs.find(run => run.target_alias === alias)
+      setSelectedRun(related ? await api.run(related.id) : null)
+    } catch (caught) {
+      setWorkspaceError(caught instanceof Error ? caught.message : 'Target context could not be loaded.')
+    }
+  }
   async function logout() { await api.logout().catch(()=>undefined); setAuth('login') }
   if (auth === 'loading') return <main className="boot"><div className="mark mark-large">B</div><div className="spinner light-spinner"/><p>Opening local workbench…</p></main>
   if (auth === 'login') return <Login onLogin={() => setAuth('ready')}/>
   return <div className="app-shell"><SideNav view={view} setView={setView} logout={logout} activeRuns={activeRuns}/><main className="content">
-    <WorkspaceHeader view={view} activeRuns={activeRuns}/>
-    {workspaceLoading && <section className="workspace-loading" aria-live="polite"><div className="spinner"/><span>Synchronizing policy, fixtures and evidence…</span></section>}
+    <WorkspaceHeader view={view} activeRuns={activeRuns} policyLabel={String(policy?.document.scenario || 'no-active-policy')}/>
+    {workspaceLoading && <section className="workspace-loading" aria-live="polite"><div className="spinner"/><span>Synchronizing policy, targets and evidence…</span></section>}
     {!workspaceLoading && workspaceError && <section className="workspace-recovery card" role="alert"><span className="recovery-icon"><Icon name="alert" size={22}/></span><div><p className="eyebrow">Control API unavailable</p><h1>Workspace data could not be synchronized.</h1><p>{workspaceError}</p><p className="micro">Your session remains open and persisted evidence is unchanged.</p></div><button className="button primary" onClick={() => void loadWorkspace()}>Retry synchronization</button></section>}
     {!workspaceLoading && !workspaceError && <>
-      {view === 'runs' && <RunsView targets={targets} runs={runs} selectedRun={selectedRun} select={select} refresh={loadRuns} capabilities={capabilities}/>}
+      {view === 'runs' && <RunsView targets={targets} targetAlias={targetAlias} onTargetChange={alias => void changeTarget(alias)} runs={runs} selectedRun={selectedRun} select={select} refresh={loadRuns} capabilities={capabilities}/>}
       {view === 'discovery' && <DiscoveryView spec={spec}/>}
       {view === 'policy' && <PolicyView policy={policy} spec={spec}/>}
       {view === 'compare' && <CompareView runs={runs}/>}

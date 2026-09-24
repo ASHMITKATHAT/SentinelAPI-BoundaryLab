@@ -1,6 +1,6 @@
 # BoundaryLab service and workbench
 
-This package contains the working BoundaryLab local system: three independent synthetic invoice API modes, a deterministic 12-case authorization lifecycle runner, bounded transport, evidence minimization, SQLite persistence, a single safe worker, passive API discovery, remediation analysis, control APIs and report generation. The compiled React client in `apps/web/dist` is served by the same origin.
+This package contains the working BoundaryLab local system: a reviewed real-staging read adapter, three optional synthetic invoice API modes, deterministic authorization runners, bounded transport, evidence minimization, SQLite persistence, a single safe worker, passive API discovery, remediation analysis, control APIs and report generation. The compiled React client in `apps/web/dist` is served by the same origin.
 
 The developer matrix command uses in-process ASGI targets for fast tests. The mentor demo command starts four actual localhost sockets: the control plane on port 8080 and one disclosed fixture build on each of ports 9011–9013.
 
@@ -37,18 +37,31 @@ Push-Location apps/web
 npm ci
 npm run build
 Pop-Location
-& '.\.venv\Scripts\python.exe' -m boundarylab.devserver
+& '.\.venv\Scripts\python.exe' -m boundarylab.devserver --with-lab-fixtures
 ```
 
 The server prints a random bootstrap secret. Open `http://127.0.0.1:8080`, authenticate, and queue the three-build proof. To use a stable secret and isolated demo database during rehearsal:
 
 ```powershell
 & '.\.venv\Scripts\python.exe' -m boundarylab.devserver `
+  --with-lab-fixtures `
   --bootstrap-secret 'mentor-demo-boundary-2026' `
   --data-dir '.\var\rehearsal'
 ```
 
 The demo binds only to `127.0.0.1`. Do not expose this development launcher directly to a public network.
+
+## Run against an authorized staging resource
+
+BoundaryLab starts with no active target when neither `--with-lab-fixtures` nor `--target-config` is supplied. Follow the [real staging target runbook](../../docs/37_REAL_TARGET_RUNBOOK.md) to bind one fixed OpenAPI `GET` operation to environment-backed identities, resource proof and forbidden response fields.
+
+```powershell
+& '.\.venv\Scripts\python.exe' -m boundarylab.devserver `
+  --target-config '.\private-targets\registry.json' `
+  --data-dir '.\var\staging-probe'
+```
+
+Real mode accepts numeric loopback origins only. Use an authorized local staging service or approved loopback forward/proxy. It does not accept arbitrary browser URLs or persist target secrets.
 
 ## Passive discovery and shadow-route evidence
 
@@ -58,7 +71,7 @@ Each candidate can be approved or rejected only with a written rationale. Bounda
 
 ## Container profile
 
-From the repository root, set a 16-character-or-longer secret and run `docker compose up --build`. The image compiles the React client in a Node build stage, installs the Python service in a slim runtime stage and runs as an unprivileged user. Compose publishes only `127.0.0.1:8080`; fixture ports remain internal to the process. The root filesystem is read-only, `/tmp` is a restricted tmpfs and `/data` is the only durable volume.
+From the repository root, set a 16-character-or-longer secret and run `docker compose up --build`. The image compiles the React client in a Node build stage, installs the Python service in a slim runtime stage and runs as an unprivileged user. Compose publishes only `127.0.0.1:8080` and starts fail-closed with no active target. When lab fixtures are explicitly enabled, their ports remain internal to the process. The root filesystem is read-only, `/tmp` is a restricted tmpfs and `/data` is the only durable volume.
 
 ## Remediation modes
 

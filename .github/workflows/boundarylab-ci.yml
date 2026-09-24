@@ -49,7 +49,7 @@ jobs:
             boundarylab:ci)
           trap 'docker rm --force "$CONTAINER_ID" >/dev/null 2>&1 || true' EXIT
           for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:18080/api/healthz | grep --quiet '"version":"0.3.0"'; then
+            if curl --fail --silent http://127.0.0.1:18080/api/healthz | grep --quiet '"version":"0.3.1"'; then
               exit 0
             fi
             sleep 1
@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
-          python -m boundarylab.devserver --bootstrap-secret ci-only-boundary-secret --data-dir var/ci > /tmp/boundarylab.log 2>&1 &
+          python -m boundarylab.devserver --with-lab-fixtures --bootstrap-secret ci-only-boundary-secret --data-dir var/ci > /tmp/boundarylab.log 2>&1 &
           SERVER_PID=$!
           for attempt in {1..30}; do
             curl --fail --silent http://127.0.0.1:9013/healthz && break

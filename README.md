@@ -2,7 +2,7 @@
 
 **PS3 is locked by the team. Built for 1–2 developers and a two-day competition sprint.**
 
-**Status: the complete local vertical slice is implemented and tested.** It runs a React workbench, a FastAPI control plane, a durable SQLite queue and three independent HTTP fixture builds. It produces redacted evidence, compares repairs and exports mentor-ready HTML or JSON artifacts. Market sizes, performance targets and prices in the strategy documents remain hypotheses until externally validated.
+**Status: the complete local vertical slice and a safe real-staging read adapter are implemented and tested.** The default process starts with no active target. Operators can load a reviewed, environment-backed staging registry, while the three synthetic builds remain an explicit mentor-lab mode. The system produces redacted evidence, compares compatible runs and exports mentor-ready HTML or JSON artifacts. Market sizes, performance targets and prices remain hypotheses until externally validated.
 
 BoundaryLab asks: **after access is revoked, can a user still retrieve a previously queued export—and does the fix preserve legitimate access?** It combines ordinary object/field authorization checks with one complete permission-lifecycle test. The product name is provisional; trademark availability has not been checked.
 
@@ -17,10 +17,10 @@ Push-Location apps/web
 npm ci
 npm run build
 Pop-Location
-& '.\.venv\Scripts\python.exe' -m boundarylab.devserver
+& '.\.venv\Scripts\python.exe' -m boundarylab.devserver --with-lab-fixtures
 ```
 
-Open `http://127.0.0.1:8080` and enter the bootstrap secret printed by the server. Click **Queue three-build proof**, then show the live evidence, policy, repair comparison and report handoff screens. Runtime state survives a browser refresh and service restart in `var/boundarylab.db`.
+Open `http://127.0.0.1:8080` and enter the bootstrap secret printed by the server. Open **Verify**, run the disclosed lab matrix, then show the live evidence, policy, repair comparison and report handoff screens. Runtime state survives a browser refresh and service restart in `var/boundarylab.db`.
 
 The expected disclosed demo matrix is:
 
@@ -45,17 +45,18 @@ The owner-only build matters: it closes access too aggressively and breaks legit
 - An append-only policy decision ledger that records approve/reject rationale, reviewer, timestamp and an immutable hash of the exact candidate snapshot.
 - Persisted deterministic remediation with an optional, explicitly invoked Structured Outputs model path. AI never controls execution or changes a verdict.
 - A loopback-only CI gate with configurable failure conditions and a GitHub Actions workflow that runs the fixed build through real sockets.
+- A fail-closed real-target mode for a reviewed OpenAPI-bound `GET`, multiple environment-backed identities, marker proof and identity-specific forbidden fields.
 
 ## Run the hardened local container
 
-The container keeps all three synthetic targets on its private loopback and publishes only the workbench on host loopback. It runs as a non-root user; the Compose profile drops Linux capabilities, uses a read-only root filesystem and persists SQLite state in a named volume.
+The default container starts the control plane with no active target. It runs as a non-root user; the Compose profile drops Linux capabilities, uses a read-only root filesystem and persists SQLite state in a named volume. This fail-closed default prevents a packaged deployment from silently presenting fixture results as real scans.
 
 ```powershell
 $env:BOUNDARYLAB_BOOTSTRAP_SECRET = 'replace-with-a-16-plus-character-secret'
 docker compose up --build
 ```
 
-Open `http://127.0.0.1:8080`. The container profile improves repeatability for a local pilot; it does not turn the application into a public multi-tenant service. Static packaging controls are checked by `tools/validate_pack.py`; the GitHub workflow performs the actual image build and hardened container smoke test.
+Open `http://127.0.0.1:8080`. Configure an active staging adapter using the [real-target runbook](docs/37_REAL_TARGET_RUNBOOK.md), or use the explicit local lab command above for the mentor matrix. The container profile improves repeatability for a local pilot; it does not turn the application into a public multi-tenant service.
 
 See [implementation status](docs/32_IMPLEMENTATION_STATUS.md) for verified behavior and the remaining hosted-production gates.
 
@@ -83,7 +84,7 @@ We do not claim that multi-user tests, evidence, CI, authorization matrices or t
 | Business | [26 business model](docs/26_BUSINESS_MODEL.md), [24 roadmap](docs/24_FUTURE_ROADMAP.md), [00 executive summary](docs/00_EXECUTIVE_SUMMARY.md) |
 | Machine-readable handoff | [control API](contracts/control-api.openapi.json), [demo API](contracts/demo-api.openapi.json), [policy schema](contracts/policy.schema.json), [example policy](examples/invoice-policy.json), [fixture manifest](examples/fixture-manifest.json), [evaluation cases](examples/evaluation-cases.json), [design tokens](design/tokens.json) |
 | Implementation accountability | [30 requirement traceability](docs/30_REQUIREMENTS_TRACEABILITY.md), [artifact checks](docs/31_ARTIFACT_VALIDATION.md) |
-| Working system status | [32 implementation status](docs/32_IMPLEMENTATION_STATUS.md), [service runbook](apps/service/README.md) |
+| Working system status | [32 implementation status](docs/32_IMPLEMENTATION_STATUS.md), [real-target runbook](docs/37_REAL_TARGET_RUNBOOK.md), [0.3.1 release evidence](docs/38_RELEASE_EVIDENCE_0.3.1.md), [service runbook](apps/service/README.md) |
 
 `docs/HACKATHON_SELECTION.md` and `docs/AMIHACKS_MARKET_AND_BUSINESS_ANALYSIS.md` preserve earlier research. Their earlier PS1 selection is superseded. This pack's team size, PS3 selection and scope are authoritative.
 
@@ -98,7 +99,7 @@ Set-Location ../..
 & '.\.venv\Scripts\python.exe' tools/validate_pack.py
 ```
 
-The application imports the bundled contract, runs real HTTP requests against seeded targets, persists redacted evidence, compares actual runs and exports reports. Changing a target response changes the verdict. The working UI never substitutes the prototype's example evidence.
+The application starts fail-closed with no active target. In explicit lab mode it runs real HTTP requests against disclosed seeded targets; with a reviewed registry it runs fixed read-only probes against an authorized loopback staging adapter. Both modes persist redacted evidence, compare actual runs and export reports. Changing a target response changes the verdict. The working UI never substitutes the prototype's example evidence.
 
 The CLI gate is intentionally limited to loopback targets. A reviewed deployment adapter is required before remote active testing:
 

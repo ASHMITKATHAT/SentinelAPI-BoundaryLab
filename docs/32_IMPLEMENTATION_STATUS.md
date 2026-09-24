@@ -1,12 +1,14 @@
 # BoundaryLab implementation status
 
-**Verified 24 September 2026.** This record separates working behavior from product plans and production claims.
+**Verified 25 September 2026.** This record separates working behavior from product plans and production claims.
 
 ## Current system
 
-BoundaryLab is a working local, single-operator authorization regression workbench. The React client and FastAPI control plane run on `127.0.0.1:8080`. Three independent synthetic invoice services run on ports 9011–9013. The control worker calls those services through real localhost HTTP connections, persists results in SQLite and returns only evidence produced by the run.
+BoundaryLab is a working local, single-operator authorization regression workbench. The React client and FastAPI control plane run on `127.0.0.1:8080`. The process starts with no active target unless the operator supplies a reviewed real-target registry or explicitly enables the disclosed lab fixtures. This prevents packaged or local startup from silently presenting synthetic results as real findings.
 
-The product currently covers one reviewed permission lifecycle: Alice owns an invoice, Bob receives and later loses a share, and an asynchronous export created during the share is retrieved before and after the declared revocation deadline. Mallory provides the cross-tenant negative case.
+Real-target mode binds a fixed OpenAPI `GET` operation to a numeric loopback origin, a fixed resource ID reference, an in-memory proof marker and 2–6 environment-backed identities. It sends one bounded request per identity and evaluates allowed access, denied access and identity-specific forbidden fields. The browser cannot submit a URL, token, resource ID, marker or expected verdict.
+
+Explicit lab mode covers one reviewed permission lifecycle: Alice owns an invoice, Bob receives and later loses a share, and an asynchronous export created during the share is retrieved before and after the declared revocation deadline. Mallory provides the cross-tenant negative case.
 
 ## Verified acceptance evidence
 
@@ -20,13 +22,15 @@ The live comparison shows why a deny-everyone repair is not acceptable. It preve
 
 Automated verification covers scenario verdicts, transport bounds and redaction, hashed sessions, restart recovery, queue cancellation, CSRF/Origin enforcement, trusted target selection, discovery bounds, HAR minimization, remediation schema validation, CI failure semantics and safe report rendering. The frontend passes TypeScript checking and a production Vite build. `tools/validate_pack.py` validates contracts, schemas, required cases, expected fixture counts and local documentation links.
 
+The suite now contains 37 passing service tests, including real-target registry validation, OpenAPI operation binding, numeric-loopback enforcement, missing-environment failure, encoded resource IDs, exception-detail suppression, marker/token/resource-ID non-persistence and restricted-field redaction. A browser QA run exercised the real adapter through separate localhost sockets: one allowed identity received the configured marker, one denied identity received 404, and the resulting two-case report passed in scope with marker and bearer values redacted.
+
 ## Generic onboarding without unsafe execution
 
 The Discovery workspace accepts OpenAPI 3.x JSON and optional HAR JSON. It derives operation coverage, flags resource-ID operations as human-reviewed dual-identity candidates and compares observed method/path templates with the contract. It sends no target requests. It does not persist HAR headers, cookies, query strings or bodies, and it generalizes identifier-like path segments.
 
 Candidate governance is implemented as an append-only decision ledger. Approve/reject requests reference a candidate ID from the stored analysis; the server stores its exact snapshot, canonical SHA-256, rationale, reviewer and timestamp. This prevents the browser from substituting an unreviewed rule body and preserves superseded decisions for inspection.
 
-This makes the product useful on an unfamiliar API before an active adapter exists. Active execution still requires a trusted adapter defining actors, seed/setup, resource extraction, allowed operations, protected markers and cleanup. Arbitrary remote scanning is intentionally unavailable until isolated runners and DNS/IP pinning exist.
+This makes the product useful on an unfamiliar API before an active adapter exists. Real read execution requires a reviewed registry and environment-backed identities; active mutation still requires a trusted adapter defining actors, seed/setup, resource extraction, allowed operations, protected markers and cleanup. Arbitrary remote scanning is intentionally unavailable until isolated runners and DNS/IP pinning exist. The [real-target runbook](37_REAL_TARGET_RUNBOOK.md) documents the supported workflow and limits.
 
 ## Remediation and CI
 
@@ -55,7 +59,7 @@ The system is production-minded for a controlled local demonstration. It has not
 5. Load, soak, browser end-to-end and disaster-recovery tests in the deployment environment.
 6. Dependency/SBOM scanning, threat-model review and an independent security assessment.
 
-A multi-stage Dockerfile and hardened local Compose profile are included for repeatable packaging. Only port 8080 is published on host loopback; fixture ports remain private, the process is non-root, the root filesystem is read-only and Linux capabilities are dropped. Docker is unavailable on the local verification host. The GitHub workflow therefore owns the actual image-build and hardened runtime smoke-test gate; do not claim that gate until its run succeeds for the release commit.
+A multi-stage Dockerfile and hardened local Compose profile are included for repeatable packaging. Only port 8080 is published on host loopback and default startup has no active target. If the disclosed lab is explicitly enabled, fixture ports remain private. The process is non-root, the root filesystem is read-only and Linux capabilities are dropped. Docker is unavailable on the local verification host. The GitHub workflow therefore owns the actual image-build and hardened runtime smoke-test gate; do not claim that gate until its run succeeds for the release commit.
 
 Until those gates are complete, describe BoundaryLab as a working local pilot or hackathon MVP. Describe a successful scan as **pass in scope**, never as proof that the target is secure in general.
 

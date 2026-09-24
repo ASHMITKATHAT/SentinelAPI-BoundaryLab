@@ -22,7 +22,8 @@ from .discovery import DiscoveryError, analyze_api_surface
 from .remediation import OpenAITriageClient, deterministic_triage
 from .reports import html_report, json_report
 from .repository import Repository, TERMINAL_STATES
-from .worker import RunWorker, TrustedTarget
+from .targets import TrustedTarget, load_real_targets
+from .worker import RunWorker
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -49,10 +50,11 @@ class Settings:
         if len(secret) < 16:
             raise RuntimeError("BOUNDARYLAB_BOOTSTRAP_SECRET must be at least 16 characters")
         data_dir = Path(os.environ.get("BOUNDARYLAB_DATA_DIR", ROOT / "var"))
+        target_config = os.environ.get("BOUNDARYLAB_TARGET_CONFIG")
         return cls(
             database_path=data_dir / "boundarylab.db",
             bootstrap_secret=secret,
-            targets=default_targets(),
+            targets=load_real_targets(Path(target_config)) if target_config else {},
             secure_cookie=os.environ.get("BOUNDARYLAB_SECURE_COOKIE", "false").lower() == "true",
             openai_api_key=os.environ.get("OPENAI_API_KEY") or None,
             ai_model=os.environ.get("BOUNDARYLAB_AI_MODEL", "gpt-6-astra"),
@@ -61,9 +63,9 @@ class Settings:
 
 def default_targets() -> dict[str, TrustedTarget]:
     return {
-        "demo-vulnerable": TrustedTarget("demo-vulnerable", "http://127.0.0.1:9011", "Vulnerable baseline"),
-        "demo-owner-only": TrustedTarget("demo-owner-only", "http://127.0.0.1:9012", "Over-restrictive owner-only repair"),
-        "demo-fixed": TrustedTarget("demo-fixed", "http://127.0.0.1:9013", "Correct policy-preserving repair"),
+        "demo-vulnerable": TrustedTarget("demo-vulnerable", "http://127.0.0.1:9011", "Vulnerable lab build", synthetic_fixture=True),
+        "demo-owner-only": TrustedTarget("demo-owner-only", "http://127.0.0.1:9012", "Over-restrictive lab build", synthetic_fixture=True),
+        "demo-fixed": TrustedTarget("demo-fixed", "http://127.0.0.1:9013", "Correct lab build", synthetic_fixture=True),
     }
 
 
@@ -146,7 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="SentinelAPI BoundaryLab control API",
-        version="0.3.0",
+        version="0.3.1",
         description="Local single-operator authorization regression workbench",
         lifespan=lifespan,
         docs_url="/api/docs",
@@ -198,9 +200,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=403, detail="valid CSRF token required")
         return session
 
+    def selected_target(target_alias: str | None) -> TrustedTarget | None:
+        if target_alias is None:
+            return next(iter(configured.targets.values()), None)
+        target = configured.targets.get(target_alias)
+        if not target:
+            raise HTTPException(status_code=404, detail="target alias is not in the trusted registry")
+        return target
+
     @app.get("/api/healthz")
     async def health():
-        return {"status": "ok", "service": "boundarylab", "version": "0.3.0"}
+        return {"status": "ok", "service": "boundarylab", "version": "0.3.1"}
 
     @app.post("/api/v1/session", status_code=201)
     async def create_session(body: SessionCreate, request: Request, response: Response):
@@ -239,8 +249,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "alias": target.alias,
                 "label": target.label,
                 "origin": target.origin,
-                "synthetic_fixture": True,
-                "limits": {"requests": 200, "requests_per_second": 2, "in_flight": 1, "response_bytes": 65_536},
+                "synthetic_fixture": target.synthetic_fixture,
+                "mode": "temporal_lab" if target.synthetic_fixture else "real_read_probe",
+                "ready": not target.missing_environment(),
+                "missing_environment": list(target.missing_environment()),
+                "case_count": 12 if target.synthetic_fixture else len(target.adapter.identities) if target.adapter else 0,
+                "limits": {
+                    "requests": 200 if target.synthetic_fixture else 20,
+                    "requests_per_second": 2,
+                    "in_flight": 1,
+                    "response_bytes": 65_536,
+                },
             }
             for target in configured.targets.values()
         ]
@@ -254,6 +273,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "active_replay": "trusted_adapters_only",
                 "candidate_reviews": "append_only",
             },
+            "runtime": {
+                "configured_targets": len(configured.targets),
+                "real_targets": sum(not target.synthetic_fixture for target in configured.targets.values()),
+                "lab_targets": sum(target.synthetic_fixture for target in configured.targets.values()),
+                "remote_network": "loopback_or_operator_tunnel_only",
+            },
             "remediation": {
                 "deterministic": True,
                 "ai_configured": bool(configured.openai_api_key),
@@ -263,24 +288,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     @app.get("/api/v1/policy")
-    async def policy(_: dict = Depends(session_dependency)):
-        path = ROOT / "examples" / "invoice-policy.json"
-        document = json.loads(path.read_text(encoding="utf-8"))
+    async def policy(target_alias: str | None = None, _: dict = Depends(session_dependency)):
+        target = selected_target(target_alias)
+        if target and target.adapter:
+            document = {
+                "name": f"{target.label} read boundary",
+                "scenario": "read-boundary-v1",
+                "target_alias": target.alias,
+                "operation_id": target.adapter.operation_id,
+                "path_template": target.adapter.path_template,
+                "marker_pointer": target.adapter.marker_pointer,
+                "deny_statuses": list(target.adapter.deny_statuses),
+                "identities": [
+                    {
+                        "name": identity.name,
+                        "expectation": identity.expectation,
+                        "forbidden_pointers": list(identity.forbidden_pointers),
+                    }
+                    for identity in target.adapter.identities
+                ],
+                "required_cases": [f"R{index:02}" for index in range(1, len(target.adapter.identities) + 1)],
+                "safety": "GET only; fixed operation; fixed loopback origin; bearer secrets from environment",
+            }
+            approved = True
+        elif target and target.synthetic_fixture:
+            path = ROOT / "examples" / "invoice-policy.json"
+            document = json.loads(path.read_text(encoding="utf-8"))
+            approved = True
+        else:
+            document = {
+                "name": "No access contract configured",
+                "scenario": "unconfigured",
+                "required_cases": [],
+                "safety": "Add a reviewed real-target registry before active testing.",
+            }
+            approved = False
         encoded = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        return {"approved": True, "sha256": hashlib.sha256(encoded).hexdigest(), "document": document}
+        return {"approved": approved, "sha256": hashlib.sha256(encoded).hexdigest(), "document": document}
 
     @app.get("/api/v1/spec")
-    async def specification(_: dict = Depends(session_dependency)):
-        path = ROOT / "contracts" / "demo-api.openapi.json"
-        document = json.loads(path.read_text(encoding="utf-8"))
+    async def specification(target_alias: str | None = None, _: dict = Depends(session_dependency)):
+        target = selected_target(target_alias)
+        if target and target.openapi_path:
+            document = json.loads(target.openapi_path.read_text(encoding="utf-8"))
+        elif target and target.synthetic_fixture:
+            path = ROOT / "contracts" / "demo-api.openapi.json"
+            document = json.loads(path.read_text(encoding="utf-8"))
+        else:
+            return {
+                "configured": False,
+                "title": "No API contract configured",
+                "version": "",
+                "openapi": "",
+                "operation_count": 0,
+                "operations": [],
+                "document": None,
+            }
         operations = [
             operation["operationId"]
             for item in document.get("paths", {}).values()
             for operation in item.values()
             if isinstance(operation, dict) and operation.get("operationId")
         ]
-        return {"title": document["info"]["title"], "version": document["info"]["version"],
-                "openapi": document["openapi"], "operation_count": len(operations), "operations": operations,
+        info = document.get("info", {})
+        return {"configured": True, "title": str(info.get("title") or "Configured API"),
+                "version": str(info.get("version") or "unspecified"),
+                "openapi": str(document.get("openapi") or "3.x"), "operation_count": len(operations), "operations": operations,
                 "document": document}
 
     @app.post("/api/v1/discovery/analyses", status_code=201)
@@ -335,6 +408,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         target = configured.targets.get(body.target_alias)
         if not target:
             raise HTTPException(status_code=422, detail="target alias is not in the trusted registry")
+        missing_environment = target.missing_environment()
+        if missing_environment:
+            raise HTTPException(
+                status_code=422,
+                detail=f"target is missing environment references: {', '.join(missing_environment)}",
+            )
         if len([run for run in repository.list_runs(100) if run["state"] in {"queued", "running"}]) >= 10:
             raise HTTPException(status_code=429, detail="local run queue is full")
         run = repository.create_run(target.alias, target.origin)
@@ -345,7 +424,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def list_runs(_: dict = Depends(session_dependency), limit: int = 20):
         if not 1 <= limit <= 100:
             raise HTTPException(status_code=422, detail="limit must be between 1 and 100")
-        return [public_run(run) for run in repository.list_runs(limit)]
+        return [
+            public_run(run)
+            for run in repository.list_runs(100)
+            if run["target_alias"] in configured.targets
+        ][:limit]
 
     @app.get("/api/v1/runs/{run_id}")
     async def get_run(run_id: str, _: dict = Depends(session_dependency)):
