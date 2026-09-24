@@ -1,46 +1,68 @@
 import type { CandidateReview, Capabilities, Comparison, DiscoveryAnalysis, Explanation, PolicySummary, Run, SpecSummary, Target } from './types'
+import { ApiError, requestJson } from './http'
 
-let csrfToken = sessionStorage.getItem('boundarylab-csrf') || ''
+let csrfToken = ''
+let status = { connection: 'unknown' as 'unknown' | 'connected' | 'offline', sessionExpired: false }
+const listeners = new Set<() => void>()
+export const getApiStatus = () => status
+export const subscribeApiStatus = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } }
+function updateStatus(update: Partial<typeof status>) {
+  const next = { ...status, ...update }
+  if (next.connection === status.connection && next.sessionExpired === status.sessionExpired) return
+  status = next
+  listeners.forEach(listener => listener())
+}
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, timeoutMs?: number): Promise<T> {
   const headers = new Headers(init.headers)
   if (init.body) headers.set('Content-Type', 'application/json')
   if (init.method && init.method !== 'GET' && csrfToken) headers.set('X-CSRF-Token', csrfToken)
-  const response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null)
-    throw new Error(payload?.error?.message || `Request failed (${response.status})`)
+  try {
+    const result = await requestJson<T>(path, { ...init, headers }, timeoutMs)
+    updateStatus({ connection: 'connected' })
+    return result
+  } catch (error) {
+    if (error instanceof ApiError) {
+      if (['network', 'timeout', 'protocol'].includes(error.kind)) updateStatus({ connection: 'offline' })
+      else updateStatus({ connection: 'connected' })
+      if (error.kind === 'session' && !(path === '/api/v1/session' && init.method === 'POST')) {
+        csrfToken = ''
+        updateStatus({ sessionExpired: true })
+      }
+    }
+    throw error
   }
-  if (response.status === 204) return undefined as T
-  return response.json() as Promise<T>
 }
 
 export const api = {
   async restoreSession() {
     const session = await request<{ csrf_token: string }>('/api/v1/session')
     csrfToken = session.csrf_token
-    sessionStorage.setItem('boundarylab-csrf', csrfToken)
+    updateStatus({ sessionExpired: false })
   },
   async login(bootstrapSecret: string) {
     const session = await request<{ csrf_token: string }>('/api/v1/session', {
       method: 'POST', body: JSON.stringify({ bootstrap_secret: bootstrapSecret }),
     })
     csrfToken = session.csrf_token
-    sessionStorage.setItem('boundarylab-csrf', csrfToken)
+    updateStatus({ sessionExpired: false })
   },
   async logout() {
     await request<void>('/api/v1/session', { method: 'DELETE' })
     csrfToken = ''
-    sessionStorage.removeItem('boundarylab-csrf')
+    updateStatus({ sessionExpired: false })
   },
   targets: () => request<Target[]>('/api/v1/targets'),
   capabilities: () => request<Capabilities>('/api/v1/capabilities'),
   policy: (targetAlias?: string) => request<PolicySummary>(`/api/v1/policy${targetAlias ? `?target_alias=${encodeURIComponent(targetAlias)}` : ''}`),
   spec: (targetAlias?: string) => request<SpecSummary>(`/api/v1/spec${targetAlias ? `?target_alias=${encodeURIComponent(targetAlias)}` : ''}`),
-  analyze: (label: string, document: Record<string, unknown>, har: Record<string, unknown> | null) =>
-    request<DiscoveryAnalysis>('/api/v1/discovery/analyses', {
-      method: 'POST', body: JSON.stringify({ label, document, har }),
-    }),
+  analyze: (label: string, document: Record<string, unknown>, har: Record<string, unknown> | null) => {
+    const body = JSON.stringify({ label: label.trim(), document, har })
+    if (new TextEncoder().encode(body).byteLength > 2_000_000) {
+      return Promise.reject(new Error('OpenAPI and HAR together exceed the 2 MB request limit. Remove the traffic sample or use smaller files.'))
+    }
+    return request<DiscoveryAnalysis>('/api/v1/discovery/analyses', { method: 'POST', body })
+  },
   analyses: () => request<DiscoveryAnalysis[]>('/api/v1/discovery/analyses?limit=20'),
   candidateReviews: (analysisId: string) =>
     request<CandidateReview[]>(`/api/v1/discovery/analyses/${analysisId}/reviews`),
@@ -55,7 +77,7 @@ export const api = {
   compare: (runIds: string[]) => request<Comparison>('/api/v1/comparisons', { method: 'POST', body: JSON.stringify({ run_ids: runIds }) }),
   explain: (runId: string, mode: 'deterministic' | 'ai') => request<Explanation>(`/api/v1/runs/${runId}/explanations`, {
     method: 'POST', body: JSON.stringify({ mode }),
-  }),
+  }, mode === 'ai' ? 60_000 : 20_000),
   async artifact(runId: string, format: 'report_html' | 'results_json') {
     return request<{ download_path: string; sha256: string }>(`/api/v1/runs/${runId}/artifacts`, {
       method: 'POST', body: JSON.stringify({ format }),
