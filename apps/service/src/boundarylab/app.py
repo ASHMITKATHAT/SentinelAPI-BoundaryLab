@@ -54,10 +54,21 @@ class Settings:
             raise RuntimeError("BOUNDARYLAB_BOOTSTRAP_SECRET must be at least 16 characters")
         data_dir = Path(os.environ.get("BOUNDARYLAB_DATA_DIR", ROOT / "var"))
         target_config = os.environ.get("BOUNDARYLAB_TARGET_CONFIG")
+        origins_env = os.environ.get("BOUNDARYLAB_ALLOWED_ORIGINS")
+        origins = (
+            tuple(o.strip() for o in origins_env.split(",") if o.strip())
+            if origins_env
+            else (
+                "http://127.0.0.1:8080",
+                "http://localhost:8080",
+                "http://localhost:5173",
+            )
+        )
         return cls(
             database_path=data_dir / "boundarylab.db",
             bootstrap_secret=secret,
             targets=load_real_targets(Path(target_config)) if target_config else {},
+            allowed_origins=origins,
             secure_cookie=os.environ.get("BOUNDARYLAB_SECURE_COOKIE", "false").lower() == "true",
             openai_api_key=os.environ.get("OPENAI_API_KEY") or None,
             ai_model=os.environ.get("BOUNDARYLAB_AI_MODEL", "gpt-6-astra"),
