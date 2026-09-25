@@ -41,6 +41,17 @@ def test_queued_cancellation_is_terminal_and_evented(tmp_path):
     assert [event["type"] for event in repository.events(run["id"])] == ["queued", "cancelled"]
 
 
+def test_worker_activity_events_are_persisted_in_order(tmp_path):
+    repository = Repository(tmp_path / "boundarylab.db")
+    run = repository.create_run("demo-fixed", "http://127.0.0.1:9013")
+    repository.append_event(run["id"], "scope_verified", "Trusted scope matched")
+    repository.append_event(run["id"], "executing", "Required cases started")
+
+    events = repository.events(run["id"])
+    assert [event["type"] for event in events] == ["queued", "scope_verified", "executing"]
+    assert events[-1]["message"] == "Required cases started"
+
+
 def test_discovery_and_explanation_records_survive_repository_restart(tmp_path):
     database = tmp_path / "boundarylab.db"
     repository = Repository(database)

@@ -30,7 +30,7 @@ The authenticated workspace now opens on a mentor-facing overview instead of dro
 
 | Gate | Result |
 |---|---|
-| Service tests | 38 passed |
+| Service tests | 39 passed |
 | Frontend TypeScript | Passed |
 | Production Vite bundle | Passed; 31 modules transformed |
 | Static pack and contract validation | Passed |
@@ -41,7 +41,8 @@ The authenticated workspace now opens on a mentor-facing overview instead of dro
 | Mentor walkthrough | Passed; Overview and all five guided stages navigated at 569 px without horizontal overflow |
 | Login recovery | Passed; incorrect secret explained, surrounding whitespace normalized and progress visibly rendered |
 | Verification progress | Passed; fixed build shown from queue creation through running state to pass-in-scope completion |
+| Worker execution trace | Passed; 6 persisted stages from run acceptance through evidence sealing and scoped verdict |
 | Browser console | 0 warnings or errors |
 | Git whitespace check | Passed |
 
-Production bundle output after the progress improvements: 0.55 kB HTML, 44.81 kB CSS (9.24 kB gzip) and 283.45 kB JavaScript (86.32 kB gzip). The release gate remains scoped to compatible persisted cases and does not certify behavior outside the declared policy.
+Production bundle output after the execution-trace polish: 0.55 kB HTML, 47.21 kB CSS (9.68 kB gzip) and 285.59 kB JavaScript (86.91 kB gzip). The release gate remains scoped to compatible persisted cases and does not certify behavior outside the declared policy.

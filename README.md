@@ -51,6 +51,7 @@ The owner-only build matters: it closes access too aggressively and breaks legit
 - A deterministic release gate that compares an ordered baseline and candidate, then explains fixed controls, preserved product behavior, regressions and missing evidence.
 - Connection-aware UI errors, session-expiry recovery, request timeouts, explicit login/run progress and a persistent local launcher with a health check.
 - A mentor-first product overview and persistent stage guide that make discovery, policy, runtime proof, remediation, release comparison, reports, CI and real-target safeguards visible without relying on a separate explanation.
+- A database-backed execution trace that shows the real worker accepting a run, verifying target scope, executing cases, sealing sanitized evidence and producing the verdict.
 
 ## Run the hardened local container
 

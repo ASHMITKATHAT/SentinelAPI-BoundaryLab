@@ -72,6 +72,14 @@ export interface Run {
   report?: Report | null
 }
 
+export interface RunEvent {
+  id: number
+  run_id: string
+  type: string
+  message: string
+  created_at: string
+}
+
 export interface ComparisonRow {
   case_id: string
   name: string

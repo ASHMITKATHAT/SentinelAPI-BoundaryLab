@@ -1,7 +1,7 @@
 import { Component, FormEvent, Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { api, getApiStatus, subscribeApiStatus } from './api'
 import { ApiError } from './http'
-import type { CandidateReview, Capabilities, CaseResult, Comparison, DiscoveryAnalysis, Evidence, Explanation, PolicySummary, Report, Run, SpecSummary, Target, Verdict } from './types'
+import type { CandidateReview, Capabilities, CaseResult, Comparison, DiscoveryAnalysis, Evidence, Explanation, PolicySummary, Report, Run, RunEvent, SpecSummary, Target, Verdict } from './types'
 
 type View = 'overview' | 'runs' | 'discovery' | 'policy' | 'compare' | 'reports'
 type StageView = Exclude<View, 'overview'>
@@ -222,6 +222,46 @@ function EvidenceDrawer({ evidence, close }: { evidence: Evidence; close: () => 
   </div>
 }
 
+const activityLabels: Record<string, string> = {
+  queued: 'Run accepted',
+  running: 'Worker claimed',
+  scope_verified: 'Safety scope verified',
+  executing: 'Cases executing',
+  evidence_sealed: 'Evidence sealed',
+  completed: 'Verdict ready',
+  failed: 'Run failed',
+  interrupted: 'Run interrupted',
+  cancelled: 'Run cancelled',
+}
+
+function RunActivity({ run }: { run: Run }) {
+  const [events, setEvents] = useState<RunEvent[]>([])
+  const [error, setError] = useState('')
+  const active = ['queued', 'running'].includes(run.state)
+  useEffect(() => {
+    let disposed = false
+    async function load() {
+      try {
+        const result = await api.runEvents(run.id)
+        if (!disposed) { setEvents(result.events); setError('') }
+      } catch (caught) {
+        if (!disposed) setError(caught instanceof Error ? caught.message : 'Execution activity unavailable')
+      }
+    }
+    setEvents([]); setError(''); void load()
+    if (!active) return () => { disposed = true }
+    const timer = window.setInterval(() => void load(), 700)
+    return () => { disposed = true; window.clearInterval(timer) }
+  }, [run.id, active])
+  return <section className={`card execution-activity ${active ? 'is-live' : ''}`} aria-label="Persisted execution activity">
+    <div className="section-head"><div><p className="eyebrow">Actual backend activity</p><h3>Execution trace</h3></div><span className={active ? 'live-badge' : 'audit-badge'}><i/>{active ? 'Live' : 'Persisted audit trail'}</span></div>
+    <p className="activity-intro">These events come from the worker and database. They are not simulated interface steps.</p>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    {!error && events.length === 0 && <div className="activity-loading"><div className="spinner"/><span>Reading persisted run events…</span></div>}
+    {events.length > 0 && <div className="execution-stream" role="log" aria-live="polite">{events.map((event, index) => <article className={`execution-event event-${event.type}`} key={event.id}><div className="event-meta"><span>{String(index + 1).padStart(2,'0')}</span><time>{new Date(event.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}</time></div><strong>{activityLabels[event.type] || event.type.replaceAll('_',' ')}</strong><p>{event.message.replaceAll('demo-','')}</p></article>)}</div>}
+  </section>
+}
+
 function RemediationPanel({ run, capabilities }: { run: Run; capabilities: Capabilities | null }) {
   const [result, setResult] = useState<Explanation | null>(null)
   const [busy, setBusy] = useState('')
@@ -255,10 +295,11 @@ function RunDetail({ run, cancel, capabilities }: { run: Run | null; cancel: (id
       <div><p className="eyebrow">{realProbe ? 'Real staging boundary' : 'Permission lifecycle'} / {run.id}</p><h2>{realProbe ? 'Do the configured identities respect this resource boundary?' : 'Can a temporary user still retrieve the invoice after access is revoked?'}</h2><p className="muted">Target <code>{run.target_alias}</code> · build <code>{run.build_id || 'pending'}</code></p></div>
       <div className="hero-status"><StatusBadge value={run.assessment || run.state}/>{!['completed','failed','interrupted','cancelled'].includes(run.state) && <button className="button secondary compact" onClick={() => cancel(run.id)}>Cancel</button>}</div>
     </section>
+    <RunActivity run={run}/>
     {!report && <section className="card working"><div className="spinner"/><div><h3>{run.state === 'queued' ? 'Waiting for the single safe worker' : 'Executing bounded target requests'}</h3><p>State and evidence are persisted. Refreshing this page will not lose the run.</p></div></section>}
     {report && <>
       {report.execution_error && <section className="notice" role="alert"><strong>Run incomplete.</strong> {report.execution_error}</section>}
-      <section className="metrics"><div><span>Pass</span><b>{report.counts.pass}</b></div><div className="metric-danger"><span>Violations</span><b>{report.counts.violation}</b></div><div><span>Inconclusive</span><b>{report.counts.inconclusive}</b></div><div><span>Requests</span><b>{report.request_count}</b></div></section>
+      <section className="metrics"><div><span>Pass</span><b>{report.counts.pass}</b></div><div className={report.counts.violation ? 'metric-danger' : 'metric-clear'}><span>Violations</span><b>{report.counts.violation}</b></div><div><span>Inconclusive</span><b>{report.counts.inconclusive}</b></div><div><span>Requests</span><b>{report.request_count}</b></div></section>
       <section className="card"><div className="section-head"><div><p className="eyebrow">Observed requests</p><h3>{realProbe ? 'One bounded read per identity' : 'Follow the permission'}</h3></div><span className="scope-chip">{realProbe ? 'GET only · redirects blocked' : '2,000 ms grace · 200 ms margin'}</span></div><Timeline report={report}/></section>
       <section className="card"><div className="section-head"><div><p className="eyebrow">Policy acceptance</p><h3>{report.cases.length} required cases</h3></div><span className="muted micro">Cleanup: {report.cleanup_status}</span></div>
         <div className="table-scroll"><table><thead><tr><th>Case</th><th>Permission promise</th><th>Expected</th><th>Observed</th><th>Verdict</th></tr></thead><tbody>
@@ -278,8 +319,8 @@ function RunsView({ targets, targetAlias, onTargetChange, runs, selectedRun, sel
   const [activity, setActivity] = useState('')
   const selectedTarget = targets.find(item => item.alias === targetAlias) || null
   const labTargets = targets.filter(item => item.synthetic_fixture && item.ready)
-  async function start(alias: string) { setBusy(true); setError(''); setActivity(`Creating a bounded run for ${alias.replace('demo-','')}…`); try { const run = await api.startRun(alias); setActivity('Run accepted. Restoring its live state…'); await select(run); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not start run') } finally { setBusy(false); setActivity('') } }
-  async function matrix() { setBusy(true); setError(''); try { let first: Run | null = null; for (const [index, item] of labTargets.entries()) { setActivity(`Queueing build ${index + 1} of ${labTargets.length}: ${item.label}`); const run = await api.startRun(item.alias); first ||= run } setActivity(`${labTargets.length} builds queued. The safe worker will execute them one at a time.`); if (first) await select(first); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not queue lab matrix') } finally { setBusy(false); setActivity('') } }
+  async function start(alias: string) { setBusy(true); setError(''); setActivity(`Creating a bounded run for ${alias.replace('demo-','')}…`); try { const run = await api.startRun(alias); setActivity('Run accepted. Restoring its live state…'); await refresh(); await select(run) } catch (e) { setError(e instanceof Error ? e.message : 'Could not start run') } finally { setBusy(false); setActivity('') } }
+  async function matrix() { setBusy(true); setError(''); try { let first: Run | null = null; for (const [index, item] of labTargets.entries()) { setActivity(`Queueing build ${index + 1} of ${labTargets.length}: ${item.label}`); const run = await api.startRun(item.alias); first ||= run } setActivity(`${labTargets.length} builds queued. The safe worker will execute them one at a time.`); await refresh(); if (first) await select(first) } catch (e) { setError(e instanceof Error ? e.message : 'Could not queue lab matrix') } finally { setBusy(false); setActivity('') } }
   async function cancel(id: string) { try { await api.cancelRun(id); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Cancellation failed') } }
   async function refreshRuns() { setError(''); try { await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Could not refresh runs') } }
   const completed = runs.filter(run => run.state === 'completed')

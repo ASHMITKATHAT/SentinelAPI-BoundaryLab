@@ -69,6 +69,12 @@ class RunWorker:
         self._active_run_id = run_id
         self._active_cancel = asyncio.Event()
         try:
+            request_budget = 20 if target.adapter else 200
+            self.repository.append_event(
+                run_id,
+                "scope_verified",
+                f"Trusted target matched; request budget {request_budget}, redirects disabled, one request in flight",
+            )
             limits = httpx.Limits(max_connections=1, max_keepalive_connections=1)
             async with httpx.AsyncClient(
                 timeout=None,
@@ -84,6 +90,11 @@ class RunWorker:
                     cancel_event=self._active_cancel,
                     operations={target.adapter.operation_id: target.adapter.operation} if target.adapter else None,
                 )
+                self.repository.append_event(
+                    run_id,
+                    "executing",
+                    "Executing reviewed identity and permission-state cases through the bounded transport",
+                )
                 if target.adapter:
                     report = await AccessProbeScenario(
                         transport,
@@ -97,6 +108,11 @@ class RunWorker:
             elif self._active_cancel.is_set():
                 self.repository.fail_run(run_id, "cancelled", "operator cancelled run; cleanup attempted")
             else:
+                self.repository.append_event(
+                    run_id,
+                    "evidence_sealed",
+                    f"Sealed {report.request_count} sanitized request records and evaluated {len(report.cases)} required cases",
+                )
                 self.repository.complete_run(run_id, report_to_dict(report))
         except asyncio.CancelledError:
             state = "interrupted" if self._stop.is_set() else "cancelled"

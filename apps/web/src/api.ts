@@ -1,4 +1,4 @@
-import type { CandidateReview, Capabilities, Comparison, DiscoveryAnalysis, Explanation, PolicySummary, Run, SpecSummary, Target } from './types'
+import type { CandidateReview, Capabilities, Comparison, DiscoveryAnalysis, Explanation, PolicySummary, Run, RunEvent, SpecSummary, Target } from './types'
 import { ApiError, requestJson } from './http'
 
 let csrfToken = ''
@@ -72,6 +72,7 @@ export const api = {
     }),
   runs: () => request<Run[]>('/api/v1/runs?limit=50'),
   run: (id: string) => request<Run>(`/api/v1/runs/${id}`),
+  runEvents: (id: string) => request<{ events: RunEvent[]; next_cursor: number }>(`/api/v1/runs/${id}/events?after=0&limit=100`),
   startRun: (targetAlias: string) => request<Run>('/api/v1/runs', { method: 'POST', body: JSON.stringify({ target_alias: targetAlias }) }),
   cancelRun: (id: string) => request<Run>(`/api/v1/runs/${id}/cancel`, { method: 'POST' }),
   compare: (runIds: string[]) => request<Comparison>('/api/v1/comparisons', { method: 'POST', body: JSON.stringify({ run_ids: runIds }) }),

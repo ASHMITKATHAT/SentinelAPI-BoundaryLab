@@ -276,6 +276,13 @@ class Repository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def append_event(self, run_id: str, event_type: str, message: str) -> None:
+        with self.connection() as connection:
+            connection.execute(
+                "INSERT INTO events(run_id,type,message,created_at) VALUES(?,?,?,?)",
+                (run_id, event_type, message, utc_now()),
+            )
+
     def create_artifact(self, run_id: str, format_name: str, content: bytes) -> dict[str, Any]:
         artifact_id = f"artifact_{secrets.token_hex(8)}"
         digest = hashlib.sha256(content).hexdigest()
