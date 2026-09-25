@@ -23,6 +23,9 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/boundarylab"]
 
+[tool.vercel]
+entrypoint = "main.py"
+
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 testpaths = ["tests"]
