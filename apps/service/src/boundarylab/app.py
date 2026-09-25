@@ -19,6 +19,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .discovery import DiscoveryError, analyze_api_surface
+from .github_source import GitHubSourceClient, GitHubSourceError
 from .remediation import OpenAITriageClient, deterministic_triage
 from .reports import html_report, json_report
 from .repository import Repository, TERMINAL_STATES
@@ -43,6 +44,8 @@ class Settings:
     web_dist: Path = ROOT / "apps" / "web" / "dist"
     openai_api_key: str | None = None
     ai_model: str = "gpt-6-astra"
+    github_token: str | None = None
+    github_transport: httpx.AsyncBaseTransport | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -58,6 +61,7 @@ class Settings:
             secure_cookie=os.environ.get("BOUNDARYLAB_SECURE_COOKIE", "false").lower() == "true",
             openai_api_key=os.environ.get("OPENAI_API_KEY") or None,
             ai_model=os.environ.get("BOUNDARYLAB_AI_MODEL", "gpt-6-astra"),
+            github_token=os.environ.get("BOUNDARYLAB_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN") or None,
         )
 
 
@@ -106,6 +110,13 @@ class CandidateReviewCreate(BaseModel):
     candidate_id: str = Field(min_length=1, max_length=200)
     decision: Literal["approved", "rejected"]
     rationale: str = Field(min_length=8, max_length=500)
+
+
+class GitHubImportCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    repository: str = Field(min_length=3, max_length=240)
+    ref: str = Field(default="", max_length=200)
+    path: str = Field(min_length=5, max_length=500)
 
 
 async def validated_json(request: Request, model: type[BaseModel], *, limit: int = 2_000_000) -> BaseModel:
@@ -285,7 +296,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "model": configured.ai_model if configured.openai_api_key else None,
                 "data_sent": "failed case summaries only when operator explicitly selects AI mode",
             },
+            "sources": {
+                "github": True,
+                "github_private_access": bool(configured.github_token),
+                "github_secret_location": "server_environment_only",
+            },
         }
+
+    @app.post("/api/v1/integrations/github/import")
+    async def import_github_openapi(body: GitHubImportCreate, _: dict = Depends(mutation_dependency)):
+        try:
+            return await GitHubSourceClient(
+                configured.github_token,
+                transport=configured.github_transport,
+            ).import_openapi(body.repository, body.ref, body.path)
+        except GitHubSourceError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/v1/policy")
     async def policy(target_alias: str | None = None, _: dict = Depends(session_dependency)):

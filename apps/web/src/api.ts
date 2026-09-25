@@ -1,4 +1,4 @@
-import type { CandidateReview, Capabilities, Comparison, DiscoveryAnalysis, Explanation, PolicySummary, Run, RunEvent, SpecSummary, Target } from './types'
+import type { CandidateReview, Capabilities, Comparison, DiscoveryAnalysis, Explanation, GitHubImportResult, PolicySummary, Run, RunEvent, SpecSummary, Target } from './types'
 import { ApiError, requestJson } from './http'
 
 let csrfToken = ''
@@ -35,6 +35,7 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs?: numb
 }
 
 export const api = {
+  health: () => requestJson<{ status: string; service: string; version: string }>('/api/healthz', {}, 4_000),
   async restoreSession() {
     const session = await request<{ csrf_token: string }>('/api/v1/session')
     csrfToken = session.csrf_token
@@ -54,6 +55,9 @@ export const api = {
   },
   targets: () => request<Target[]>('/api/v1/targets'),
   capabilities: () => request<Capabilities>('/api/v1/capabilities'),
+  importGitHubOpenApi: (repository: string, ref: string, path: string) => request<GitHubImportResult>('/api/v1/integrations/github/import', {
+    method: 'POST', body: JSON.stringify({ repository: repository.trim(), ref: ref.trim(), path: path.trim() }),
+  }, 20_000),
   policy: (targetAlias?: string) => request<PolicySummary>(`/api/v1/policy${targetAlias ? `?target_alias=${encodeURIComponent(targetAlias)}` : ''}`),
   spec: (targetAlias?: string) => request<SpecSummary>(`/api/v1/spec${targetAlias ? `?target_alias=${encodeURIComponent(targetAlias)}` : ''}`),
   analyze: (label: string, document: Record<string, unknown>, har: Record<string, unknown> | null) => {

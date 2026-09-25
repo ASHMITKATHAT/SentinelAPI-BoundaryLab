@@ -170,6 +170,55 @@
         }
       }
     },
+    "/integrations/github/import": {
+      "post": {
+        "operationId": "importGitHubOpenApi",
+        "summary": "Import OpenAPI 3.x JSON through the fixed GitHub API; private token remains server-side",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubImport"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Typed error; see documentation for 401/403/409/413/422/429/503",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitHubImportRequest"
+              }
+            }
+          }
+        }
+      }
+    },
     "/policy": {
       "get": {
         "operationId": "getPolicy",
@@ -2367,6 +2416,82 @@
           "har"
         ]
       },
+      "GitHubImportRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "repository": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 240
+          },
+          "ref": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "path": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "repository",
+          "path"
+        ]
+      },
+      "GitHubImport": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "repository": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repository_url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "private": {
+            "type": "boolean"
+          },
+          "default_branch": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "file_sha": {
+            "type": "string",
+            "minLength": 1
+          },
+          "operation_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "document": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "repository",
+          "repository_url",
+          "private",
+          "default_branch",
+          "ref",
+          "path",
+          "file_sha",
+          "operation_count",
+          "document"
+        ]
+      },
       "DiscoveryAnalysis": {
         "type": "object",
         "additionalProperties": true,
@@ -2529,12 +2654,34 @@
               "lab_targets",
               "remote_network"
             ]
+          },
+          "sources": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "github": {
+                "type": "boolean"
+              },
+              "github_private_access": {
+                "type": "boolean"
+              },
+              "github_secret_location": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "github",
+              "github_private_access",
+              "github_secret_location"
+            ]
           }
         },
         "required": [
           "discovery",
           "runtime",
-          "remediation"
+          "remediation",
+          "sources"
         ]
       }
     }

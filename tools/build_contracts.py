@@ -202,6 +202,15 @@ schemas = {
                      'sha256':HASH,'created_at':STR,'download_path':STR}),
     'DiscoveryRequest': obj({'label':{**STR,'maxLength':120},'document':{'type':'object','additionalProperties':True},
                              'har':{'type':['object','null'],'additionalProperties':True}}),
+    'GitHubImportRequest': obj({
+        'repository': {**STR,'minLength':3,'maxLength':240},
+        'ref': {'type':'string','maxLength':200},
+        'path': {**STR,'minLength':5,'maxLength':500},
+    }, ['repository','path']),
+    'GitHubImport': obj({
+        'repository':STR,'repository_url':STR,'private':BOOL,'default_branch':STR,'ref':STR,'path':STR,
+        'file_sha':STR,'operation_count':INT,'document':{'type':'object','additionalProperties':True},
+    }),
     'DiscoveryAnalysis': {'type':'object','additionalProperties':True,
                           'required':['id','label','created_at','analysis_version','spec','summary','operations',
                                       'invariant_candidates','traffic_diff','safety','limitations']},
@@ -221,9 +230,12 @@ schemas = {
                     'required':['id','run_id','mode','provider_status','summary','risk','root_causes',
                                 'remediation_steps','regression_checks','patch_outline','limitations']},
     'Capabilities': {'type':'object','additionalProperties':True,
-                     'properties':{'runtime':obj({'configured_targets':INT,'real_targets':INT,'lab_targets':INT,
-                                                  'remote_network':STR})},
-                     'required':['discovery','runtime','remediation']}}
+                     'properties':{
+                         'runtime':obj({'configured_targets':INT,'real_targets':INT,'lab_targets':INT,
+                                        'remote_network':STR}),
+                         'sources':obj({'github':BOOL,'github_private_access':BOOL,'github_secret_location':STR}),
+                     },
+                     'required':['discovery','runtime','remediation','sources']}}
 schemas['PolicyDocument'].pop('$id', None)
 schemas['PolicyDocument'].pop('$schema', None)
 
@@ -255,6 +267,9 @@ add_control('/session','get','getSession','Restore an authenticated local sessio
 add_control('/session','delete','deleteSession','Invalidate session',status='204')
 add_control('/targets','get','listTargets','Trusted configured targets',arr(ref('Target')))
 add_control('/capabilities','get','getCapabilities','Runtime discovery and remediation capability disclosure',ref('Capabilities'))
+add_control('/integrations/github/import','post','importGitHubOpenApi',
+            'Import OpenAPI 3.x JSON through the fixed GitHub API; private token remains server-side',
+            ref('GitHubImport'),ref('GitHubImportRequest'))
 op=add_control('/policy','get','getPolicy','Reviewed permission policy and exact hash for one configured target',{'type':'object','additionalProperties':True})
 op['parameters']=[{'name':'target_alias','in':'query','required':False,'schema':{**STR,'minLength':1}}]
 op=add_control('/spec','get','getSpecification','Target-bound contract and operation inventory',{'type':'object','additionalProperties':True})

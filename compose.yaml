@@ -8,6 +8,7 @@ services:
       BOUNDARYLAB_BOOTSTRAP_SECRET: "${BOUNDARYLAB_BOOTSTRAP_SECRET:?Set a 16+ character BOUNDARYLAB_BOOTSTRAP_SECRET}"
       BOUNDARYLAB_AI_MODEL: "${BOUNDARYLAB_AI_MODEL:-gpt-6-astra}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      BOUNDARYLAB_GITHUB_TOKEN: "${BOUNDARYLAB_GITHUB_TOKEN:-}"
     volumes:
       - boundarylab-data:/data
     read_only: true

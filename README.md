@@ -44,6 +44,7 @@ The owner-only build matters: it closes access too aggressively and breaks legit
 - Evidence redaction and response-field allowlisting before persistence.
 - A responsive React interface using navy blue, red shades, grey and white, with accessible labels and reduced-motion handling.
 - Passive OpenAPI 3.x and HAR analysis that finds resource-ID operations, proposes dual-identity policy candidates and reports traffic routes missing from the contract.
+- A real GitHub repository importer for OpenAPI JSON. Public repositories work without browser credentials; private access uses an optional server-side `BOUNDARYLAB_GITHUB_TOKEN` that is never returned to or stored by the web client.
 - An append-only policy decision ledger that records approve/reject rationale, reviewer, timestamp and an immutable hash of the exact candidate snapshot.
 - Persisted deterministic remediation with an optional, explicitly invoked Structured Outputs model path. AI never controls execution or changes a verdict.
 - A loopback-only CI gate with configurable failure conditions and a GitHub Actions workflow that runs the fixed build through real sockets.
@@ -116,6 +117,8 @@ The CLI gate is intentionally limited to loopback targets. A reviewed deployment
 ```
 
 Optional AI remediation uses the Responses API only when `OPENAI_API_KEY` is present. Set `BOUNDARYLAB_AI_MODEL` to choose an approved model. Failed-case summaries are sent only after the operator clicks the AI action; deterministic triage remains available offline.
+
+The Discover page can import an OpenAPI 3.x JSON file from GitHub using `owner/repository`, a branch/ref and a repository-relative path. Public repositories need no token. For a private repository, set `BOUNDARYLAB_GITHUB_TOKEN` in the server environment before startup. The integration calls only `api.github.com`, blocks redirects, caps responses and imported documents, and never accepts a token from the browser. Importing a contract is passive discovery; active staging execution still requires a reviewed target registry as documented in the [real-target runbook](docs/37_REAL_TARGET_RUNBOOK.md).
 
 ## Production boundary
 

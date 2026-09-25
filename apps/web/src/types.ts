@@ -130,6 +130,19 @@ export interface Capabilities {
   discovery: { openapi: boolean; har: boolean; active_replay: string; candidate_reviews: string }
   runtime: { configured_targets: number; real_targets: number; lab_targets: number; remote_network: string }
   remediation: { deterministic: boolean; ai_configured: boolean; model: string | null; data_sent: string }
+  sources: { github: boolean; github_private_access: boolean; github_secret_location: string }
+}
+
+export interface GitHubImportResult {
+  repository: string
+  repository_url: string
+  private: boolean
+  default_branch: string
+  ref: string
+  path: string
+  file_sha: string
+  operation_count: number
+  document: Record<string, unknown>
 }
 
 export interface DiscoveryAnalysis {
