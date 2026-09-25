@@ -1,114 +1,256 @@
-# SentinelAPI BoundaryLab — working AmiHacks system
+<div align="center">
 
-**PS3 is locked by the team. Built for 1–2 developers and a two-day competition sprint.**
+# BoundaryLab
 
-**Status: the complete local vertical slice and a safe real-staging read adapter are implemented and tested.** The default process starts with no active target. Operators can load a reviewed, environment-backed staging registry, while the three synthetic builds remain an explicit mentor-lab mode. The system produces redacted evidence, compares compatible runs and exports mentor-ready HTML or JSON artifacts. Market sizes, performance targets and prices remain hypotheses until externally validated.
+### Prove revoked access stays revoked.
 
-BoundaryLab asks: **after access is revoked, can a user still retrieve a previously queued export—and does the fix preserve legitimate access?** It combines ordinary object/field authorization checks with one complete permission-lifecycle test. The product name is provisional; trademark availability has not been checked.
+**A policy-driven authorization regression workbench for APIs.**<br>
+It maps permission boundaries, replays real multi-identity workflows, catches stale access after revocation, rejects fixes that break valid users, and turns the result into a CI-ready release decision.
+
+[![BoundaryLab verification](https://github.com/ASHMITKATHAT/SentinelAPI-BoundaryLab/actions/workflows/boundarylab-ci.yml/badge.svg)](https://github.com/ASHMITKATHAT/SentinelAPI-BoundaryLab/actions/workflows/boundarylab-ci.yml)
+![Version](https://img.shields.io/badge/version-0.3.2-0b1d33)
+![Python](https://img.shields.io/badge/Python-3.12-315d8e?logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-19-071426?logo=react&logoColor=61DAFB)
+![FastAPI](https://img.shields.io/badge/FastAPI-control_plane-2f7652?logo=fastapi&logoColor=white)
+
+[Run the demo](#run-the-mentor-demo) · [See the proof](#working-proof) · [Architecture](#system-architecture) · [Judge walkthrough](#four-minute-judge-walkthrough) · [Business model](#business-model)
+
+</div>
+
+---
+
+## The problem
+
+A permission can disappear from the main screen while protected data remains reachable somewhere else.
+
+Consider this sequence:
+
+1. A temporary collaborator is allowed to read an invoice.
+2. They queue an export while access is valid.
+3. The owner revokes access; the invoice endpoint now correctly denies the collaborator.
+4. The old export retrieval path still returns the protected invoice.
+
+Every individual request can look reasonable in isolation. The failure exists **across identity, state and time**. Ordinary endpoint checks often miss it, and a hurried “owner-only” repair may stop the leak by breaking the product for every legitimate collaborator.
+
+> **Access revoked is an instruction. Access actually gone is a behavior that must be proved.**
+
+## What BoundaryLab does
+
+BoundaryLab converts a reviewed business permission promise into repeatable evidence:
+
+```text
+Real API contract → reviewed access policy → bounded workflow replay
+                  → redacted evidence → repair comparison → release gate
+```
+
+- **Discover:** import OpenAPI from GitHub or a local file and map ownership-sensitive operations without calling the target API.
+- **Define:** state who may see which resource, in which lifecycle state, and how quickly revocation must take effect.
+- **Verify:** run bounded HTTP requests with multiple controlled identities against an allowlisted lab or staging target.
+- **Explain:** derive deterministic failure reasons and optional AI-assisted remediation from redacted failed-case facts.
+- **Compare:** prove that a repair closes the leak while preserving valid owner and collaborator behavior.
+- **Handoff:** export human-readable HTML and machine-readable JSON evidence for engineering, security and CI.
+
+## Working proof
+
+The repository ships three disclosed API implementations. The **same policy, identities and 12 cases** are used for each build; target names never decide verdicts.
+
+| Implementation | Pass | Violations | Inconclusive | Release decision |
+|---|---:|---:|---:|---|
+| Vulnerable | 8 | 4 | 0 | **Blocked** |
+| Over-restrictive owner-only repair | 7 | 2 | 3 | **Blocked** |
+| Correct repair | 12 | 0 | 0 | **Pass in scope** |
+
+The middle result is the point: BoundaryLab does not reward “deny everyone.” A secure repair must stop unauthorized access **and** preserve legitimate product behavior.
+
+### What is real in the demo
+
+- The worker sends actual HTTP requests to three independently running localhost APIs.
+- The vulnerable run seals 26 sanitized request records and evaluates 12 policy cases.
+- Verdicts use observed status, protected markers, field rules, identity controls and lifecycle state.
+- Run events, evidence, comparisons and reports persist in SQLite and survive refresh/restart.
+- GitHub import reads a real repository file and records repository, ref, path and file SHA.
+- A missing identity, broken setup, timeout or insufficient proof becomes **inconclusive**, never a convenient pass.
+
+Synthetic fixtures provide known ground truth for a repeatable competition demo. They are clearly labelled and are never presented as a customer breach.
+
+## System architecture
+
+![BoundaryLab system architecture](docs/assets/boundarylab-architecture.svg)
+
+The architecture separates passive analysis from active network execution. The React client can submit intent and read results, but only the deterministic worker can send target requests. The scoped transport is the sole outbound boundary.
+
+| Layer | Responsibility | Key guarantee |
+|---|---|---|
+| React workbench | Six-stage operator journey and evidence review | Never receives target secrets |
+| FastAPI control plane | Session, CSRF/origin checks, validation, reports and API contract | Fails closed when no trusted target is configured |
+| Discovery engine | OpenAPI inventory, ownership candidates and optional HAR route diff | Passive; sends no target requests |
+| Policy governance | Reviewed access expectations, deadlines and decision ledger | AI suggestions never auto-enter policy |
+| SQLite WAL | Policies, queue, run events, reports and artifact references | Transactional single-worker claim and restart recovery |
+| Deterministic worker | Compiles policy and executes supported scenarios | AI cannot schedule traffic or change verdicts |
+| Scoped HTTP transport | Sends allowlisted operations to approved targets | Budgets, deadlines, one request in flight and no redirects |
+| Evidence pipeline | Redacts, hashes, compares and exports results | Raw unrestricted bodies and credentials are not persisted |
+
+Detailed invariants and trust boundaries are in [System Architecture](docs/08_SYSTEM_ARCHITECTURE.md) and [Security & Privacy](docs/15_SECURITY_PRIVACY.md).
+
+## How one verification works
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor O as Operator
+    participant UI as React Workbench
+    participant API as FastAPI Control Plane
+    participant DB as SQLite Queue
+    participant W as Deterministic Worker
+    participant T as Approved Target API
+
+    O->>UI: Select reviewed target and start
+    UI->>API: Create bounded run
+    API->>DB: Persist immutable run fingerprints
+    API-->>UI: 202 + run ID
+    W->>DB: Transactionally claim one run
+    W->>T: Verify build and controlled identities
+    W->>T: Grant access → valid read → queue export
+    W->>T: Revoke access and record acknowledgement time
+    W->>T: Retrieve after policy deadline
+    W->>T: Run owner and valid-access positive controls
+    W->>DB: Persist redacted evidence + hashes + verdicts
+    DB-->>UI: Live worker events and final report
+```
+
+The final verdict can be **pass**, **violation** or **inconclusive**. Authentication failure, network failure and missing proof cannot masquerade as authorization success.
+
+## Six product pages
+
+| Page | Question it answers | What to show |
+|---|---|---|
+| **Start** | Why does this problem matter? | The four-moment breach story and live workspace proof |
+| **Discover** | Where could protected data escape? | GitHub import, operation inventory, ownership candidates and shadow routes |
+| **Define** | Who should see what, and when? | Roles, field privacy, revocation deadline and immutable policy hash |
+| **Verify** | Does the real permission journey behave correctly? | Worker trace, HTTP timeline, 12 case verdicts and redacted evidence |
+| **Compare** | Did the repair close the leak without breaking the product? | Fixed, preserved, regressed and unresolved controls |
+| **Handoff** | Can engineering, security and CI use the result? | HTML report, JSON evidence and release-gate outcome |
+
+**Discover and Verify are deliberately different:** Discover reads the map and proposes review candidates; Verify tests the door with controlled real requests.
 
 ## Run the mentor demo
 
-Prerequisites: Python 3.12+ and Node.js 20.19+ (or 22.12+).
+### Requirements
+
+- Python 3.12+
+- Node.js 20.19+ or 22.12+
+- PowerShell 7 recommended on Windows
+
+### Fastest local setup
 
 ```powershell
+git clone https://github.com/ASHMITKATHAT/SentinelAPI-BoundaryLab.git
+Set-Location SentinelAPI-BoundaryLab
+
 python -m venv .venv
 & '.\.venv\Scripts\python.exe' -m pip install -e '.\apps\service[dev]'
+
 Push-Location apps/web
 npm ci
 npm run build
 Pop-Location
+
 & '.\tools\start-local.ps1' -LabFixtures
 ```
 
-Open `http://127.0.0.1:8080` and enter the bootstrap secret printed by the server. The **Start** workspace presents the mentor story and links every working capability into a five-stage walkthrough: Discover, Define, Verify, Compare and Handoff. Follow it in order, run the disclosed lab matrix in Verify, then show the live evidence and scoped release decision. Runtime state survives a browser refresh and service restart in `var/boundarylab.db`.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080) and enter the bootstrap secret printed by the launcher.
 
-`start-local.ps1` launches the workbench as a hidden background process, waits for `/api/healthz`, prints the one-time login secret and records the process/log paths under `var`. This avoids leaving a stale browser shell that later reports a vague network failure.
+The launcher starts the workbench in the background, waits for `/api/healthz`, prints the process/log locations, and stores runtime state in `var/boundarylab.db`.
 
-The expected disclosed demo matrix is:
+### Hardened container
 
-| Build | Pass | Violations | Inconclusive | Assessment |
-|---|---:|---:|---:|---|
-| Vulnerable | 8 | 4 | 0 | Blocked |
-| Owner-only repair | 7 | 2 | 3 | Blocked |
-| Correct repair | 12 | 0 | 0 | Pass in scope |
-
-The owner-only build matters: it closes access too aggressively and breaks legitimate collaborator behavior. BoundaryLab therefore demonstrates both security and product-preservation checks.
-
-## What is implemented
-
-- A declared 12-case invoice sharing policy, including post-revocation export retrieval.
-- Real localhost HTTP traffic to three separately bound target services; verdicts do not read fixture variant names.
-- A trusted target registry, redirect blocking, one in-flight request, rate/request/response limits and cleanup reserve.
-- Opaque hashed sessions, strict cookies, CSRF and Origin checks, Trusted Host enforcement and security headers.
-- A durable SQLite WAL queue, restart recovery, cancellation, run events, reports and artifact hashes.
-- Evidence redaction and response-field allowlisting before persistence.
-- A responsive React interface using navy blue, red shades, grey and white, with accessible labels and reduced-motion handling.
-- Passive OpenAPI 3.x and HAR analysis that finds resource-ID operations, proposes dual-identity policy candidates and reports traffic routes missing from the contract.
-- A real GitHub repository importer for OpenAPI JSON. Public repositories work without browser credentials; private access uses an optional server-side `BOUNDARYLAB_GITHUB_TOKEN` that is never returned to or stored by the web client.
-- An append-only policy decision ledger that records approve/reject rationale, reviewer, timestamp and an immutable hash of the exact candidate snapshot.
-- Persisted deterministic remediation with an optional, explicitly invoked Structured Outputs model path. AI never controls execution or changes a verdict.
-- A loopback-only CI gate with configurable failure conditions and a GitHub Actions workflow that runs the fixed build through real sockets.
-- A fail-closed real-target mode for a reviewed OpenAPI-bound `GET`, multiple environment-backed identities, marker proof and identity-specific forbidden fields.
-- A deterministic release gate that compares an ordered baseline and candidate, then explains fixed controls, preserved product behavior, regressions and missing evidence.
-- Connection-aware UI errors, session-expiry recovery, request timeouts, explicit login/run progress and a persistent local launcher with a health check.
-- A mentor-first product overview and persistent stage guide that make discovery, policy, runtime proof, remediation, release comparison, reports, CI and real-target safeguards visible without relying on a separate explanation.
-- A database-backed execution trace that shows the real worker accepting a run, verifying target scope, executing cases, sealing sanitized evidence and producing the verdict.
-
-## Run the hardened local container
-
-The default container starts the control plane with no active target. It runs as a non-root user; the Compose profile drops Linux capabilities, uses a read-only root filesystem and persists SQLite state in a named volume. This fail-closed default prevents a packaged deployment from silently presenting fixture results as real scans.
+The default container starts **without an active target**. This prevents a packaged deployment from silently presenting lab results as a real scan.
 
 ```powershell
 $env:BOUNDARYLAB_BOOTSTRAP_SECRET = 'replace-with-a-16-plus-character-secret'
 docker compose up --build
 ```
 
-Open `http://127.0.0.1:8080`. Configure an active staging adapter using the [real-target runbook](docs/37_REAL_TARGET_RUNBOOK.md), or use the explicit local lab command above for the mentor matrix. The container profile improves repeatability for a local pilot; it does not turn the application into a public multi-tenant service.
+The container runs as non-root, drops Linux capabilities, uses a read-only root filesystem and persists SQLite in a named volume. Use the [real-target runbook](docs/37_REAL_TARGET_RUNBOOK.md) to connect an authorized staging adapter, or use the explicit `-LabFixtures` command for the disclosed demo.
 
-See [implementation status](docs/32_IMPLEMENTATION_STATUS.md) for verified behavior and the remaining hosted-production gates.
+## Four-minute judge walkthrough
 
-## Start with the product pack
+1. **Start — 20 seconds:** “A revoke can close the main endpoint while an old export door remains open.”
+2. **Discover — 40 seconds:** import the repository contract, click **Map API boundary**, and show the visible four-stage passive analysis.
+3. **Define — 25 seconds:** show the owner, collaborator, outsider and post-revoke expectations before any request is sent.
+4. **Verify — 90 seconds:** run the vulnerable target, follow persisted worker events, and open the post-revoke evidence.
+5. **Compare — 45 seconds:** compare vulnerable vs correct and show fixed controls, preserved behavior and zero regressions.
+6. **Handoff — 20 seconds:** open the HTML report and point to JSON/CI integration.
 
-1. Read the [master brief](docs/29_PROJECT_MASTER_BRIEF.md) and [winning strategy](docs/05_WINNING_STRATEGY.md).
-2. Build against the [PRD](docs/06_PRODUCT_PRD.md), [TRD](docs/07_TECHNICAL_TRD.md), [architecture](docs/08_SYSTEM_ARCHITECTURE.md) and [contracts](docs/13_API_CONTRACTS.md).
-3. Review the [UI/UX specification](docs/10_UI_UX_DESIGN.md); the older [interactive prototype](design/boundarylab-prototype.html) remains a clearly labelled synthetic design reference.
-4. Review the [two-day plan](docs/17_IMPLEMENTATION_PHASES.md), [task breakdown](docs/18_TASK_BREAKDOWN.md) and [implemented system](docs/32_IMPLEMENTATION_STATUS.md).
-5. Rehearse the [live demo](docs/20_DEMO_PLAN.md), [pitch](docs/21_PITCH_STRATEGY.md), [judge questions](docs/22_JUDGE_QA.md) and [mentor pack](docs/27_MENTOR_REVIEW_PACK.md).
+Use the complete [mentor demo map and counter-question guide](docs/41_MENTOR_DEMO_MAP_HINGLISH.md) for stage narration and button-by-button explanations.
 
-## Product decision
+## Real repository and staging integration
 
-The memorable demonstration has three disclosed target implementations: vulnerable, an overly restrictive owner-only fix, and a correct fix. The same reviewed policy and test suite must identify the leak, reject the broken fix and accept the correct fix **only within the tested scope**. Build IDs identify which target actually answered.
+### GitHub OpenAPI import
 
-We do not claim that multi-user tests, evidence, CI, authorization matrices or temporal revocation are new inventions. Current competitors overlap substantially. Our differentiation hypothesis is a compact, usable workflow for maintaining a business permission promise through asynchronous work and proving that a repair preserves it.
+The Discover page accepts `owner/repository`, a branch/ref and a repository-relative OpenAPI JSON path.
 
-## Contents
+- Public repositories require no token.
+- Private access uses server-side `BOUNDARYLAB_GITHUB_TOKEN`.
+- The browser never accepts, stores or receives the GitHub token.
+- Requests are restricted to `api.github.com`, redirects are blocked, and imported documents are size-capped.
 
-| Area | Files |
+Repository import is passive. It does not authorize active testing.
+
+### Authorized staging probe
+
+Active real-target mode requires a reviewed target registry, an OpenAPI-bound fixed operation, environment-backed identities and an explicit protected marker. The current safe adapter is a bounded read probe designed for local services or an SSH-forwarded staging port.
+
+See [examples/real-target/registry.example.json](examples/real-target/registry.example.json) and the [real-target runbook](docs/37_REAL_TARGET_RUNBOOK.md).
+
+## Safety model
+
+BoundaryLab treats an authorization tester as a security-sensitive system itself.
+
+- Fixed target aliases; no arbitrary browser-supplied destination.
+- GET-only real probe and numeric-loopback restriction in the current adapter.
+- Request, rate, response-body and deadline budgets.
+- One request in flight and redirects disabled.
+- Opaque hashed sessions, HttpOnly cookies, CSRF/origin validation and trusted-host enforcement.
+- Sanitization before persistence; response fields are allowlisted.
+- Append-only reviewer decisions tied to immutable candidate hashes.
+- Secrets are environment references and never appear in reports or the browser.
+- Optional AI receives only redacted failed-case facts after an explicit click.
+
+## Deterministic core, optional AI
+
+AI is an explanation layer, not the security oracle.
+
+The deterministic engine decides outcomes from policy, identity state, timestamps, HTTP observations, protected markers and positive controls. Offline triage remains available without a model key. When `OPENAI_API_KEY` is configured, an operator may explicitly request a schema-constrained remediation explanation; that response cannot edit evidence, send target traffic or change the verdict.
+
+## Technology
+
+| Area | Choice |
 |---|---|
-| Research and product positioning | [01 research](docs/01_PROBLEM_RESEARCH.md), [02 track comparison](docs/02_PROBLEM_STATEMENT_COMPARISON.md), [03 saturation](docs/03_COMPETITOR_SATURATION_ANALYSIS.md), [04 competitors](docs/04_MARKET_AND_EXISTING_SOLUTIONS.md), [25 sources](docs/25_RESEARCH_SOURCES.md) |
-| Product and implementation | [06 PRD](docs/06_PRODUCT_PRD.md), [07 TRD](docs/07_TECHNICAL_TRD.md), [09 structure](docs/09_PROJECT_STRUCTURE.md), [11 flows](docs/11_USER_FLOWS.md), [12 model](docs/12_DATA_MODEL.md), [14 AI](docs/14_AI_ML_DESIGN.md) |
-| Reliability | [15 security](docs/15_SECURITY_PRIVACY.md), [16 failure handling](docs/16_FAILURE_AND_FALLBACK_STRATEGY.md), [19 testing](docs/19_TESTING_STRATEGY.md), [23 risks](docs/23_RISK_REGISTER.md), [28 readiness](docs/28_PRODUCTION_READINESS.md) |
-| Business | [26 business model](docs/26_BUSINESS_MODEL.md), [24 roadmap](docs/24_FUTURE_ROADMAP.md), [00 executive summary](docs/00_EXECUTIVE_SUMMARY.md) |
-| Machine-readable handoff | [control API](contracts/control-api.openapi.json), [demo API](contracts/demo-api.openapi.json), [policy schema](contracts/policy.schema.json), [example policy](examples/invoice-policy.json), [fixture manifest](examples/fixture-manifest.json), [evaluation cases](examples/evaluation-cases.json), [design tokens](design/tokens.json) |
-| Implementation accountability | [30 requirement traceability](docs/30_REQUIREMENTS_TRACEABILITY.md), [artifact checks](docs/31_ARTIFACT_VALIDATION.md) |
-| Working system status | [32 implementation status](docs/32_IMPLEMENTATION_STATUS.md), [real-target runbook](docs/37_REAL_TARGET_RUNBOOK.md), [0.3.2 release evidence](docs/39_RELEASE_EVIDENCE_0.3.2.md), [service runbook](apps/service/README.md) |
-
-`docs/HACKATHON_SELECTION.md` and `docs/AMIHACKS_MARKET_AND_BUSINESS_ANALYSIS.md` preserve earlier research. Their earlier PS1 selection is superseded. This pack's team size, PS3 selection and scope are authoritative.
+| Web application | React 19, TypeScript, Vite |
+| Control plane | FastAPI, Pydantic, Python 3.12 |
+| Execution | Deterministic worker, HTTPX, bounded transport |
+| Persistence | SQLite WAL with migrations and recovery |
+| Contracts | OpenAPI 3.1 and JSON Schema |
+| Evidence | Redacted JSON, escaped HTML and SHA-256 manifests |
+| Packaging | Docker, Compose and non-root hardened profile |
+| CI | GitHub Actions with tests, web build, contract validation, container smoke test and live fixed-build gate |
 
 ## Verification
 
 ```powershell
 Set-Location apps/service
 & '..\..\.venv\Scripts\python.exe' -m pytest -q -p no:cacheprovider
+
 Set-Location ../web
+npm run typecheck
 npm run build
+
 Set-Location ../..
 & '.\.venv\Scripts\python.exe' tools/validate_pack.py
 ```
 
-The application starts fail-closed with no active target. In explicit lab mode it runs real HTTP requests against disclosed seeded targets; with a reviewed registry it runs fixed read-only probes against an authorized loopback staging adapter. Both modes persist redacted evidence, compare actual runs and export reports. Changing a target response changes the verdict. The working UI never substitutes the prototype's example evidence.
-
-The CLI gate is intentionally limited to loopback targets. A reviewed deployment adapter is required before remote active testing:
+The CI pipeline also builds and smoke-tests the hardened container and runs the authorization gate against the correct fixture through real sockets.
 
 ```powershell
 & '.\.venv\Scripts\python.exe' -m boundarylab.cli gate `
@@ -116,16 +258,81 @@ The CLI gate is intentionally limited to loopback targets. A reviewed deployment
   --fail-on violation,inconclusive,execution_error
 ```
 
-Optional AI remediation uses the Responses API only when `OPENAI_API_KEY` is present. Set `BOUNDARYLAB_AI_MODEL` to choose an approved model. Failed-case summaries are sent only after the operator clicks the AI action; deterministic triage remains available offline.
+## Repository map
 
-The Discover page can import an OpenAPI 3.x JSON file from GitHub using `owner/repository`, a branch/ref and a repository-relative path. Public repositories need no token. For a private repository, set `BOUNDARYLAB_GITHUB_TOKEN` in the server environment before startup. The integration calls only `api.github.com`, blocks redirects, caps responses and imported documents, and never accepts a token from the browser. Importing a contract is passive discovery; active staging execution still requires a reviewed target registry as documented in the [real-target runbook](docs/37_REAL_TARGET_RUNBOOK.md).
+```text
+apps/
+  web/                     React operator workbench
+  service/                 FastAPI control plane, engine, worker and tests
+contracts/                 OpenAPI control/demo APIs and policy schema
+examples/                  Policy, evaluation suite and real-target examples
+docs/                      PRD, TRD, research, security, demo and release evidence
+docs/assets/               Architecture artwork
+design/                    Design tokens and labelled reference prototype
+tools/                     Local launcher, contract builder and pack validator
+.github/workflows/         Full verification pipeline
+Dockerfile                 Hardened local-pilot image
+compose.yaml               Fail-closed packaged deployment
+```
+
+## Business model
+
+The initial customer is a B2B SaaS team with tenants, sharing, role changes, reports or exports. The daily user is a backend/platform or AppSec engineer; the buyer is an engineering lead or CTO responsible for release risk.
+
+| Stage | Offer | Pricing hypothesis |
+|---|---|---:|
+| Design partner | One staging API, up to three critical workflows, policy workshop and review | ₹15,000 / two-week pilot |
+| Team | One application, up to ten maintained workflows, local runner, CI and reports | ₹8,000 / month |
+| Growth | Up to three applications with shared history and support | ₹25,000 / month |
+| Enterprise | Customer-owned runner, private deployment, SSO/RBAC and support commitments | Custom |
+
+These are validation hypotheses, not booked revenue. Companies pay to reduce permission-regression scripting, reproduction time, review effort and release uncertainty—not per vulnerability and not for an unverifiable “breach prevented” claim.
+
+## Market position
+
+StackHawk, Akto, APIsec, Escape, 42Crunch, Postman, Burp and custom test suites cover adjacent or overlapping capabilities. BoundaryLab's focused wedge is an opinionated workflow for maintaining a **permission promise over time**:
+
+- reviewed business intent before execution;
+- multiple identities and permission-state transitions;
+- asynchronous artifact retrieval after revocation;
+- positive controls that reject product-breaking fixes;
+- deterministic, redacted evidence and release comparison.
+
+The product can complement a broad API security platform. It does not claim that BOLA, workflow testing or multi-user scanning is new.
 
 ## Production boundary
 
-This is a production-minded **local, single-operator workbench**, suitable for a controlled mentor demonstration. An internet-facing or multi-tenant deployment still requires TLS/SSO, Postgres, isolated runner processes, DNS/IP pinning for remote targets, secrets management, backups, observability, load tests and an independent security review. The UI calls successful results “Pass in scope”; it does not make a broad security certification claim.
+Version 0.3.2 is a working, production-minded **local single-operator pilot**. It is suitable for the hackathon demonstration and controlled authorized staging experiments.
 
-## Team & Contributors
+An internet-facing multi-tenant service still requires TLS termination, SSO/RBAC, managed secrets, PostgreSQL and backups, tenant-isolated workers, DNS/IP pinning and egress controls, metrics/traces, load and disaster-recovery testing, retention controls and an independent security review.
 
-- **Ashmit Kathat** ([@ASHMITKATHAT](https://github.com/ASHMITKATHAT))
-- **Abhinav Pandey** ([@abhinavpandey98645-bot](https://github.com/abhinavpandey98645-bot))
+“12/12 pass” means **pass for the declared workflow and tested scope**. It is not a certification that the entire API is secure.
 
+## Documentation
+
+| Need | Document |
+|---|---|
+| Product and market summary | [Executive Summary](docs/00_EXECUTIVE_SUMMARY.md) |
+| Product requirements | [PRD](docs/06_PRODUCT_PRD.md) |
+| Technical design | [TRD](docs/07_TECHNICAL_TRD.md) |
+| Architecture and trust boundaries | [System Architecture](docs/08_SYSTEM_ARCHITECTURE.md) |
+| Security and privacy | [Security & Privacy](docs/15_SECURITY_PRIVACY.md) |
+| Test strategy | [Testing Strategy](docs/19_TESTING_STRATEGY.md) |
+| Business and pricing | [Business Model](docs/26_BUSINESS_MODEL.md) |
+| Current implementation truth | [Implementation Status](docs/32_IMPLEMENTATION_STATUS.md) |
+| Mentor pitch | [Hinglish Pitch Script](docs/36_MENTOR_PITCH_SCRIPT_HINGLISH.md) |
+| Real staging onboarding | [Real-target Runbook](docs/37_REAL_TARGET_RUNBOOK.md) |
+| Button-by-button demo | [Mentor Demo Map](docs/41_MENTOR_DEMO_MAP_HINGLISH.md) |
+
+## Team
+
+- **Ashmit Kathat** — [@ASHMITKATHAT](https://github.com/ASHMITKATHAT)
+- **Abhinav Pandey** — [@abhinavpandey98645-bot](https://github.com/abhinavpandey98645-bot)
+
+---
+
+<div align="center">
+
+**A secure repair must stop the leak without breaking the product.**
+
+</div>

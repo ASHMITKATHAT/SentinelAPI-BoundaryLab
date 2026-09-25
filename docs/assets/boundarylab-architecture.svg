@@ -1,0 +1,235 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">BoundaryLab system architecture</title>
+  <desc id="desc">Architecture showing repository and operator inputs, the React and FastAPI control plane, passive discovery, policy governance, SQLite queue, deterministic verification worker, bounded transport, approved lab or staging targets, redacted evidence, comparison, reports, CI gate and optional AI explanation.</desc>
+  <defs>
+    <linearGradient id="canvas" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071426"/>
+      <stop offset="1" stop-color="#10243e"/>
+    </linearGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d13c45"/>
+      <stop offset="1" stop-color="#a81728"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3c8b66"/>
+      <stop offset="1" stop-color="#286247"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000814" flood-opacity=".28"/>
+    </filter>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M0 0 10 5 0 10Z" fill="#7fa2cf"/></marker>
+    <marker id="arrowRed" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M0 0 10 5 0 10Z" fill="#e25b64"/></marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M0 0 10 5 0 10Z" fill="#65ad84"/></marker>
+    <style>
+      .sans{font-family:Inter,Segoe UI,Arial,sans-serif}.mono{font-family:Consolas,SFMono-Regular,monospace}
+      .zone{fill:#0b1d33;stroke:#29415f;stroke-width:1.5}.zone-active{fill:#151c2b;stroke:#83313b;stroke-width:1.5}.zone-output{fill:#0b201e;stroke:#2f6f53;stroke-width:1.5}
+      .card{fill:#fff;stroke:#dce4ee;stroke-width:1.3}.card-dark{fill:#132944;stroke:#3a587b;stroke-width:1.3}.card-red{fill:#fff7f7;stroke:#d85861;stroke-width:1.5}.card-green{fill:#f4fbf7;stroke:#4b946c;stroke-width:1.5}
+      .zone-label{fill:#91a7c2;font-size:12px;font-weight:800;letter-spacing:2px}.h1{fill:#fff;font-size:35px;font-weight:800;letter-spacing:-.8px}.sub{fill:#9fb2ca;font-size:16px}.title{fill:#0a1c33;font-size:16px;font-weight:800}.title-light{fill:#fff;font-size:16px;font-weight:800}.small{fill:#66778b;font-size:12px}.small-light{fill:#aabbd0;font-size:12px}.tag{fill:#fff;font-size:10px;font-weight:800;letter-spacing:.7px}.step{fill:#fff;font-size:11px;font-weight:900}.label{fill:#b8c8da;font-size:11px;font-weight:700}.legend{fill:#b8c8da;font-size:11px}.num{fill:#fff;font-size:12px;font-weight:900}
+      .flow{fill:none;stroke:#7fa2cf;stroke-width:2.3;marker-end:url(#arrowBlue)}.flow-red{fill:none;stroke:#e25b64;stroke-width:2.6;marker-end:url(#arrowRed)}.flow-green{fill:none;stroke:#65ad84;stroke-width:2.6;marker-end:url(#arrowGreen)}.flow-dash{fill:none;stroke:#7fa2cf;stroke-width:2;stroke-dasharray:7 7;marker-end:url(#arrowBlue)}
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" rx="28" fill="url(#canvas)"/>
+  <circle cx="1460" cy="42" r="170" fill="#b4232f" opacity=".09"/>
+  <circle cx="70" cy="960" r="220" fill="#3779bd" opacity=".07"/>
+
+  <g class="sans">
+    <rect x="55" y="48" width="48" height="48" rx="13" fill="url(#red)"/>
+    <text x="79" y="79" text-anchor="middle" class="num">B</text>
+    <text x="120" y="75" class="h1">BoundaryLab system architecture</text>
+    <text x="120" y="100" class="sub">From a business permission promise to bounded HTTP proof and a release decision</text>
+
+    <g transform="translate(1180 60)">
+      <rect width="112" height="28" rx="14" fill="#173150"/><circle cx="17" cy="14" r="4" fill="#7fa2cf"/><text x="29" y="18" class="tag">PASSIVE</text>
+      <rect x="122" width="106" height="28" rx="14" fill="#5f2029"/><circle cx="139" cy="14" r="4" fill="#e25b64"/><text x="151" y="18" class="tag">ACTIVE</text>
+      <rect x="238" width="116" height="28" rx="14" fill="#20503b"/><circle cx="255" cy="14" r="4" fill="#65ad84"/><text x="267" y="18" class="tag">EVIDENCE</text>
+    </g>
+
+    <!-- zones -->
+    <rect x="48" y="142" width="268" height="650" rx="20" class="zone"/>
+    <text x="72" y="174" class="zone-label">INPUTS &amp; HUMAN INTENT</text>
+
+    <rect x="340" y="142" width="500" height="650" rx="20" class="zone"/>
+    <text x="364" y="174" class="zone-label">CONTROL PLANE · PASSIVE BY DEFAULT</text>
+
+    <rect x="864" y="142" width="420" height="650" rx="20" class="zone-active"/>
+    <text x="888" y="174" class="zone-label">EXECUTION PLANE · ACTIVE &amp; BOUNDED</text>
+
+    <rect x="1308" y="142" width="244" height="650" rx="20" class="zone-active"/>
+    <text x="1332" y="174" class="zone-label">APPROVED TARGETS</text>
+
+    <!-- inputs -->
+    <g filter="url(#shadow)">
+      <rect x="72" y="204" width="220" height="112" rx="14" class="card"/>
+      <rect x="88" y="220" width="32" height="32" rx="9" fill="#071426"/><text x="104" y="241" text-anchor="middle" class="step">GH</text>
+      <text x="132" y="238" class="title">GitHub repository</text>
+      <text x="88" y="272" class="small">OpenAPI JSON + immutable SHA</text>
+      <text x="88" y="292" class="small">Private token stays server-side</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="72" y="340" width="220" height="112" rx="14" class="card"/>
+      <rect x="88" y="356" width="32" height="32" rx="9" fill="#315d8e"/><text x="104" y="377" text-anchor="middle" class="step">{ }</text>
+      <text x="132" y="374" class="title">Local sources</text>
+      <text x="88" y="408" class="small">OpenAPI contract · required</text>
+      <text x="88" y="428" class="small">Sanitized HAR · optional</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="72" y="476" width="220" height="134" rx="14" class="card-red"/>
+      <rect x="88" y="492" width="32" height="32" rx="9" fill="url(#red)"/><text x="104" y="513" text-anchor="middle" class="step">H</text>
+      <text x="132" y="510" class="title">Human reviewer</text>
+      <text x="88" y="544" class="small">Approves business intent</text>
+      <text x="88" y="564" class="small">Selects allowlisted target</text>
+      <text x="88" y="584" class="small">Triggers active verification</text>
+    </g>
+
+    <!-- control plane -->
+    <g filter="url(#shadow)">
+      <rect x="366" y="204" width="448" height="86" rx="14" class="card-dark"/>
+      <rect x="384" y="222" width="34" height="34" rx="9" fill="#315d8e"/><text x="401" y="244" text-anchor="middle" class="step">UI</text>
+      <text x="432" y="238" class="title-light">React + TypeScript workbench</text>
+      <text x="432" y="260" class="small-light">Start → Discover → Define → Verify → Compare → Handoff</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="366" y="316" width="448" height="98" rx="14" class="card"/>
+      <rect x="384" y="334" width="34" height="34" rx="9" fill="#071426"/><text x="401" y="356" text-anchor="middle" class="step">API</text>
+      <text x="432" y="350" class="title">FastAPI trust gateway</text>
+      <text x="432" y="372" class="small">Session · CSRF/Origin · validation · reports</text>
+      <rect x="678" y="338" width="112" height="24" rx="12" fill="#e9eef5"/><text x="734" y="354" text-anchor="middle" fill="#31465f" font-size="9" font-weight="800">FAIL CLOSED</text>
+      <text x="432" y="393" class="small">No browser-supplied target URL or credential</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="366" y="440" width="214" height="126" rx="14" class="card"/>
+      <rect x="384" y="458" width="30" height="30" rx="8" fill="#315d8e"/><text x="399" y="478" text-anchor="middle" class="step">01</text>
+      <text x="426" y="476" class="title">Discovery engine</text>
+      <text x="384" y="510" class="small">Operation inventory</text>
+      <text x="384" y="530" class="small">Ownership candidates</text>
+      <text x="384" y="550" class="small">OpenAPI ↔ HAR route diff</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="600" y="440" width="214" height="126" rx="14" class="card"/>
+      <rect x="618" y="458" width="30" height="30" rx="8" fill="#315d8e"/><text x="633" y="478" text-anchor="middle" class="step">02</text>
+      <text x="660" y="476" class="title">Policy governance</text>
+      <text x="618" y="510" class="small">Reviewed allow / deny rules</text>
+      <text x="618" y="530" class="small">Revocation deadline</text>
+      <text x="618" y="550" class="small">Append-only decision ledger</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="366" y="592" width="448" height="150" rx="14" class="card-dark"/>
+      <rect x="384" y="610" width="34" height="34" rx="17" fill="#fff"/><text x="401" y="632" text-anchor="middle" fill="#071426" font-size="10" font-weight="900">DB</text>
+      <text x="432" y="626" class="title-light">SQLite WAL · source of truth</text>
+      <text x="432" y="648" class="small-light">Policies · analyses · run queue · events · evidence index</text>
+      <line x1="384" y1="670" x2="790" y2="670" stroke="#345271"/>
+      <text x="384" y="698" class="small-light">Transactional claim · restart recovery · single active worker</text>
+      <text x="384" y="720" class="small-light">Hashes bind source, policy, build and artifact</text>
+    </g>
+
+    <!-- active execution -->
+    <g filter="url(#shadow)">
+      <rect x="890" y="204" width="368" height="112" rx="14" class="card-red"/>
+      <rect x="908" y="222" width="34" height="34" rx="9" fill="url(#red)"/><text x="925" y="244" text-anchor="middle" class="step">03</text>
+      <text x="956" y="238" class="title">Deterministic worker</text>
+      <text x="908" y="272" class="small">Claims one persisted run at a time</text>
+      <text x="908" y="292" class="small">AI cannot schedule requests or change verdicts</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="890" y="342" width="368" height="146" rx="14" class="card-red"/>
+      <rect x="908" y="360" width="34" height="34" rx="9" fill="url(#red)"/><text x="925" y="382" text-anchor="middle" class="step">04</text>
+      <text x="956" y="376" class="title">Policy compiler + scenario runner</text>
+      <text x="908" y="410" class="small">Prepare identities → grant → valid use</text>
+      <text x="908" y="430" class="small">Queue artifact → revoke → wait deadline</text>
+      <text x="908" y="450" class="small">Retrieve again + positive owner control</text>
+      <text x="908" y="470" class="small">Pass · violation · inconclusive</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="890" y="514" width="368" height="148" rx="14" class="card-red"/>
+      <rect x="908" y="532" width="34" height="34" rx="9" fill="url(#red)"/><text x="925" y="554" text-anchor="middle" class="step">05</text>
+      <text x="956" y="548" class="title">Scoped HTTP transport</text>
+      <text x="908" y="582" class="small">Registry aliases · request/rate/body budgets</text>
+      <text x="908" y="602" class="small">One in flight · no redirects · deadlines</text>
+      <text x="908" y="622" class="small">Loopback-only real probe · GET-only mode</text>
+      <rect x="908" y="635" width="130" height="18" rx="9" fill="#f4d9dc"/><text x="973" y="648" text-anchor="middle" fill="#8f1826" font-size="8" font-weight="800">SOLE NETWORK BOUNDARY</text>
+    </g>
+
+    <!-- targets -->
+    <g filter="url(#shadow)">
+      <rect x="1332" y="204" width="196" height="226" rx="14" class="card-red"/>
+      <text x="1350" y="232" class="title">Disclosed lab targets</text>
+      <rect x="1350" y="252" width="160" height="42" rx="9" fill="#fff" stroke="#e2b0b5"/><circle cx="1368" cy="273" r="6" fill="#d13c45"/><text x="1382" y="278" class="small">Vulnerable · 8 / 4 / 0</text>
+      <rect x="1350" y="306" width="160" height="42" rx="9" fill="#fff" stroke="#e2b0b5"/><circle cx="1368" cy="327" r="6" fill="#d98b32"/><text x="1382" y="332" class="small">Wrong fix · 7 / 2 / 3</text>
+      <rect x="1350" y="360" width="160" height="42" rx="9" fill="#fff" stroke="#90bba3"/><circle cx="1368" cy="381" r="6" fill="#3c8b66"/><text x="1382" y="386" class="small">Correct · 12 / 0 / 0</text>
+      <text x="1350" y="418" fill="#8f1826" font-size="9" font-weight="800">REAL LOCALHOST HTTP</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="1332" y="458" width="196" height="150" rx="14" class="card"/>
+      <text x="1350" y="486" class="title">Authorized staging</text>
+      <text x="1350" y="518" class="small">Reviewed registry</text>
+      <text x="1350" y="538" class="small">Environment-backed identities</text>
+      <text x="1350" y="558" class="small">Fixed OpenAPI-bound operation</text>
+      <text x="1350" y="578" class="small">Explicit protected marker</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="1332" y="636" width="196" height="106" rx="14" class="card-dark"/>
+      <text x="1350" y="666" class="title-light">Runtime secrets</text>
+      <text x="1350" y="696" class="small-light">Environment references only</text>
+      <text x="1350" y="716" class="small-light">Never returned to browser</text>
+    </g>
+
+    <!-- output strip -->
+    <rect x="340" y="824" width="1212" height="128" rx="20" class="zone-output"/>
+    <text x="364" y="852" class="zone-label">SANITIZED EVIDENCE &amp; RELEASE OUTPUTS</text>
+    <g filter="url(#shadow)">
+      <rect x="366" y="870" width="262" height="58" rx="12" class="card-green"/>
+      <circle cx="392" cy="899" r="14" fill="url(#green)"/><text x="392" y="903" text-anchor="middle" class="step">✓</text>
+      <text x="416" y="894" class="title">Redact + hash</text><text x="416" y="913" class="small">Allowlisted metadata only</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="648" y="870" width="270" height="58" rx="12" class="card-green"/>
+      <circle cx="674" cy="899" r="14" fill="url(#green)"/><text x="674" y="903" text-anchor="middle" class="step">↔</text>
+      <text x="698" y="894" class="title">Compare repair</text><text x="698" y="913" class="small">Fixed · preserved · regressed</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="938" y="870" width="274" height="58" rx="12" class="card-green"/>
+      <circle cx="964" cy="899" r="14" fill="url(#green)"/><text x="964" y="903" text-anchor="middle" class="step">R</text>
+      <text x="988" y="894" class="title">HTML + JSON reports</text><text x="988" y="913" class="small">Human and machine handoff</text>
+    </g>
+    <g filter="url(#shadow)">
+      <rect x="1232" y="870" width="294" height="58" rx="12" class="card-green"/>
+      <circle cx="1258" cy="899" r="14" fill="url(#green)"/><text x="1258" y="903" text-anchor="middle" class="step">CI</text>
+      <text x="1282" y="894" class="title">Release gate</text><text x="1282" y="913" class="small">Non-zero on unsafe or incomplete proof</text>
+    </g>
+
+    <!-- optional AI -->
+    <g transform="translate(72 646)">
+      <rect width="220" height="96" rx="14" class="card-dark" stroke-dasharray="6 5"/>
+      <text x="16" y="29" class="title-light">Optional AI explanation</text>
+      <text x="16" y="54" class="small-light">Receives redacted failed facts</text>
+      <text x="16" y="74" class="small-light">No execution or verdict authority</text>
+    </g>
+
+    <!-- flows -->
+    <path d="M292 260 H332 Q350 260 366 242" class="flow"/>
+    <path d="M292 396 H330 Q350 396 366 365" class="flow"/>
+    <path d="M292 544 H330 Q348 544 366 365" class="flow-red"/>
+    <path d="M590 290 V316" class="flow"/>
+    <path d="M520 414 V440" class="flow"/>
+    <path d="M670 414 V440" class="flow"/>
+    <path d="M474 566 V592" class="flow"/>
+    <path d="M708 566 V592" class="flow"/>
+    <path d="M814 650 H850 Q872 650 890 270" class="flow-red"/>
+    <path d="M1074 316 V342" class="flow-red"/>
+    <path d="M1074 488 V514" class="flow-red"/>
+    <path d="M1258 588 H1308 Q1320 588 1332 332" class="flow-red"/>
+    <path d="M1258 588 H1308 Q1320 588 1332 530" class="flow-red"/>
+    <path d="M1332 688 H1288 Q1274 688 1258 620" class="flow-dash"/>
+    <path d="M1074 662 V790 Q1074 810 1000 824" class="flow-green"/>
+    <path d="M840 708 H864" class="flow-green"/>
+    <path d="M628 899 H648" class="flow-green"/>
+    <path d="M918 899 H938" class="flow-green"/>
+    <path d="M1212 899 H1232" class="flow-green"/>
+    <path d="M366 704 H316 Q292 704 292 694" class="flow-dash"/>
+
+    <!-- annotations -->
+    <rect x="748" y="188" width="96" height="23" rx="11" fill="#173150"/><text x="796" y="203" text-anchor="middle" class="tag">NO TARGET I/O</text>
+    <rect x="1186" y="674" width="96" height="23" rx="11" fill="#5f2029"/><text x="1234" y="689" text-anchor="middle" class="tag">TARGET I/O</text>
+  </g>
+</svg>

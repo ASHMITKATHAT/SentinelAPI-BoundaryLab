@@ -2,6 +2,8 @@
 
 Local single-operator MVP. Solid boundaries below are responsibilities, not separate microservices.
 
+![BoundaryLab system architecture](assets/boundarylab-architecture.svg)
+
 ```mermaid
 flowchart LR
   U[Operator browser] --> A[FastAPI control API and static UI]
